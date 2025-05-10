@@ -1,0 +1,22 @@
+name: medcv
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - pip
+  - jupyter
+  - ipykernel
+  - numpy
+  - matplotlib
+  - scikit-image
+  - opencv
+  - nibabel
+  - simpleitk
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly
+  - pip:
+      - albumentations
+      - monai

@@ -1,0 +1,15 @@
+# Ignore data and models
+data/
+models/
+
+# Ignore Python build files
+__pycache__/
+*.pyc
+
+# Ignore notebook clutter
+.ipynb_checkpoints/
+
+# Ignore environment, weights, etc.
+*.pt
+*.onnx
+.env
