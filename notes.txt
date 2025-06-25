@@ -1,0 +1,7 @@
+Next time...
+-Finish initial data observations (show image dimensions, datatype, pixel spacing, and channels)
+-Begin transforms (use normalized constrast for images)
+
+
+Some day...
+-Add per image contrast adjustment as a transform to Monai? Take array of normalized intensities as input?
