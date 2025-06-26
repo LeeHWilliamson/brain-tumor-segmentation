@@ -96,4 +96,4 @@ def plot_intensity_histograms(subject_dict):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.show()vg
+    plt.show()
