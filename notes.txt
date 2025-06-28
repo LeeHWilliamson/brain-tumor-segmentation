@@ -1,7 +1,6 @@
 Next time...
--Finish initial data observations (show image dimensions, datatype, pixel spacing, and channels)
--Begin transforms (use normalized constrast for images)
-
+-make it so current transforms append transformed images to original dict
+-implement normalized contrast per image transformation
 
 Some day...
 -Add per image contrast adjustment as a transform to Monai? Take array of normalized intensities as input?
