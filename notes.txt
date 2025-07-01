@@ -1,4 +1,5 @@
 Next time...
+-FIX SHOW SAMPLE
 -make it so current transforms append transformed images to original dict
 -implement normalized contrast per image transformation
 

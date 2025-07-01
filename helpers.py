@@ -29,57 +29,122 @@ def build_img_set(dataPath): #return tuple containing training data and validati
 
 def show_sample(training_data, sample_idx, plane, slice_idx=None):
     sample = training_data[sample_idx]
+                
+    if "image" not in sample: 
+        flair_img = nib.load(sample["flair"]).get_fdata()
+        t1_img = nib.load(sample["t1"]).get_fdata()
+        t1ce_img = nib.load(sample["t1ce"]).get_fdata()
+        t2_img = nib.load(sample["t2"]).get_fdata()
+        seg_img = nib.load(sample["seg"]).get_fdata()
     
-    flair_img = nib.load(sample["flair"]).get_fdata()
-    t1_img = nib.load(sample["t1"]).get_fdata()
-    t1ce_img = nib.load(sample["t1ce"]).get_fdata()
-    t2_img = nib.load(sample["t2"]).get_fdata()
-    seg_img = nib.load(sample["seg"]).get_fdata()
-
-    #if we want axial (top down) view we only need 1 Z slize
-    if plane == 'axial':
-        max_slice = flair_img.shape[2] - 1
-    #if we want coronal (front) view we only need 1 Y slize
-    elif plane == 'coronal':
-        max_slice = flair_img.shape[1] - 1
-    #if we want saggital (side) view we only need 1 X slice
-    elif plane == 'sagittal':
-        max_slice = flair_img.shape[0] - 1
-    else:
-        raise ValueError(f"Invalid plane: {plane}")
-    
-    if slice_idx is None:
-        slice_idx = flair_img.shape[2] // 2
-
-    # Choose slice based on value of plane parameter
-    def get_slice(img):
+        #if we want axial (top down) view we only need 1 Z slize
         if plane == 'axial':
-            return img[:, :, slice_idx]
+            max_slice = flair_img.shape[2] - 1
+        #if we want coronal (front) view we only need 1 Y slize
         elif plane == 'coronal':
-            return img[:, slice_idx, :]
+            max_slice = flair_img.shape[1] - 1
+        #if we want saggital (side) view we only need 1 X slice
         elif plane == 'sagittal':
-            return img[slice_idx, :, :]
+            max_slice = flair_img.shape[0] - 1
+        else:
+            raise ValueError(f"Invalid plane: {plane}")
+        
+        if slice_idx is None:
+            slice_idx = max_slice // 2
 
-    # Plot
-    fig, axes = plt.subplots(nrows=1, ncols=5, figsize=(15, 5)) #1 row 5 cols = 1D array
+        # Choose slice based on value of plane parameter
+        def get_slice(img):
+            if plane == 'axial':
+                return img[:, :, slice_idx]
+            elif plane == 'coronal':
+                return img[:, slice_idx, :]
+            elif plane == 'sagittal':
+                return img[slice_idx, :, :]
+    
+        # Plot
+        fig, axes = plt.subplots(nrows=1, ncols=5, figsize=(15, 5)) #1 row 5 cols = 1D array
+    
+        axes[0].imshow(get_slice(flair_img), cmap="gray") #if we have multiple rows and cols we will need to index this as 2D array
+        axes[0].set_title(f"FLAIR - {plane} slice {slice_idx}")
+    
+        axes[1].imshow(get_slice(t1_img), cmap="gray")
+        axes[1].set_title(f"T1 - {plane} slice {slice_idx}")
+    
+        axes[2].imshow(get_slice(t1ce_img), cmap="gray")
+        axes[2].set_title(f"T1CE - {plane} slice {slice_idx}")
+    
+        axes[3].imshow(get_slice(t2_img), cmap="gray")
+        axes[3].set_title(f"T2 - {plane} slice {slice_idx}")
+    
+        axes[4].imshow(get_slice(seg_img), cmap="gray")
+        axes[4].set_title(f"Label - {plane} slice {slice_idx}")
+    
+        plt.tight_layout()
+        plt.show()
+    else:
+        #IF WE ARE HERE NOTE THAT CHANNELS HAVE BEEN PERMUTED
+        stack_img = sample["image"]
+        seg_img = sample["seg"]
+    
+        if plane == 'axial':
+            max_slice = stack_img.shape[1] - 1
+            if slice_idx is None:
+                slice_idx = stack_img.shape[1] // 2
+        elif plane == 'coronal':
+            max_slice = stack_img.shape[3] - 1
+            if slice_idx is None:
+                slice_idx = stack_img.shape[3] // 2
+        elif plane == 'sagittal':
+            max_slice = stack_img.shape[2] - 1
+            if slice_idx is None:
+                slice_idx = stack_img.shape[2] // 2
+        else:
+            raise ValueError(f"Invalid plane: {plane}")
+        
+        # if slice_idx is None:
+        #     slice_idx = stack_img.shape[2] // 2
 
-    axes[0].imshow(get_slice(flair_img), cmap="gray") #if we have multiple rows and cols we will need to index this as 2D array
-    axes[0].set_title(f"FLAIR - {plane} slice {slice_idx}")
+        # Helper to select slice by plane
+        def get_slice(volume, slice_idx):
+            if plane == 'axial':
+                return volume[:, slice_idx, :, :]  # shape (D, H, W)
+            elif plane == 'coronal':
+                return volume[:, :, :, slice_idx]
+            elif plane == 'sagittal':
+                return volume[:, :, slice_idx, :]
+            else:
+                raise ValueError(f"Invalid plane: {plane}")
 
-    axes[1].imshow(get_slice(t1_img), cmap="gray")
-    axes[1].set_title(f"T1 - {plane} slice {slice_idx}")
+        def get_seg_slice(seg, slice_idx):
+            if plane == 'axial':
+                return seg[slice_idx, :, :]      # [D, H, W] → axial = D
+            elif plane == 'coronal':
+                return seg[:, :, slice_idx]      # H
+            elif plane == 'sagittal':
+                return seg[:, slice_idx, :]      # W
+            else:
+                raise ValueError(f"Invalid plane: {plane}")
 
-    axes[2].imshow(get_slice(t1ce_img), cmap="gray")
-    axes[2].set_title(f"T1CE - {plane} slice {slice_idx}")
+                
+        img_slices = get_slice(stack_img, slice_idx)
+        #seg_slice = get_slice(seg_img.unsqueeze(0) if seg_img.ndim == 3 else seg_img, slice_idx)[0]
+        seg_slice = get_seg_slice(seg_img, slice_idx)
+        print(f"Image slice shape: {img_slices.shape}")  # Should be [C, H, W]
+        print(f"Seg slice shape: {seg_slice.shape}")     # Should be [H, W]
+        titles = ["FLAIR", "T1", "T1CE", "T2"]
+        fig, axes = plt.subplots(1, 5, figsize=(18, 4))
 
-    axes[3].imshow(get_slice(t2_img), cmap="gray")
-    axes[3].set_title(f"T2 - {plane} slice {slice_idx}")
+        for i in range(4):
+            axes[i].imshow(img_slices[i].cpu(), cmap="gray")
+            axes[i].set_title(f"{titles[i]} ({plane}, {slice_idx})")
+            #axes[i].axis("off")
 
-    axes[4].imshow(get_slice(seg_img), cmap="gray")
-    axes[4].set_title(f"Label - {plane} slice {slice_idx}")
+        axes[4].imshow(seg_slice.cpu(), cmap="gray")
+        axes[4].set_title("Segmentation")
+        axes[4].axis("off")
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        plt.show()
 
 def plot_intensity_histograms(subject_dict):
     plt.figure(figsize=(10, 6))
