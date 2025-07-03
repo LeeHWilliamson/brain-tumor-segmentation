@@ -89,15 +89,18 @@ def show_sample(training_data, sample_idx, plane, slice_idx=None):
         if plane == 'axial':
             max_slice = stack_img.shape[1] - 1
             if slice_idx is None:
-                slice_idx = stack_img.shape[1] // 2
+                # slice_idx = stack_img.shape[1] // 2
+                slice_idx = max_slice // 2
         elif plane == 'coronal':
-            max_slice = stack_img.shape[3] - 1
-            if slice_idx is None:
-                slice_idx = stack_img.shape[3] // 2
-        elif plane == 'sagittal':
             max_slice = stack_img.shape[2] - 1
             if slice_idx is None:
-                slice_idx = stack_img.shape[2] // 2
+                #slice_idx = stack_img.shape[2] // 2
+                slice_idx = max_slice//2
+        elif plane == 'sagittal':
+            max_slice = stack_img.shape[3] - 1
+            if slice_idx is None:
+                #slice_idx = stack_img.shape[3] // 2
+                slice_idx = max_slice//2
         else:
             raise ValueError(f"Invalid plane: {plane}")
         
@@ -105,13 +108,19 @@ def show_sample(training_data, sample_idx, plane, slice_idx=None):
         #     slice_idx = stack_img.shape[2] // 2
 
         # Helper to select slice by plane
-        def get_slice(volume, slice_idx):
+        def get_slice(volume, slice_idx, channelIndex):
             if plane == 'axial':
-                return volume[:, slice_idx, :, :]  # shape (D, H, W)
+                return volume[channelIndex, slice_idx, :, :]  # shape (D, H, W)
             elif plane == 'coronal':
-                return volume[:, :, :, slice_idx]
+                img_coronal = volume[channelIndex, :, slice_idx, :]
+                #img_coronal = img_coronal.permute(1,0)
+                return img_coronal
+                #return volume[:, :, slice_idx, :]
             elif plane == 'sagittal':
-                return volume[:, :, slice_idx, :]
+                img_sagittal = volume[channelIndex, :, :, slice_idx]
+                #img_sagittal = img_sagittal.permute(1,0)
+                return img_sagittal
+                #return volume[:, :, :, slice_idx]
             else:
                 raise ValueError(f"Invalid plane: {plane}")
 
@@ -119,18 +128,26 @@ def show_sample(training_data, sample_idx, plane, slice_idx=None):
             if plane == 'axial':
                 return seg[slice_idx, :, :]      # [D, H, W] → axial = D
             elif plane == 'coronal':
-                return seg[:, :, slice_idx]      # H
+                seg_coronal = seg[:, slice_idx, :]
+                #seg_coronal = seg_coronal.permute(1,0)
+                return seg_coronal
+                #return seg[:, slice_idx, :]      # H
             elif plane == 'sagittal':
-                return seg[:, slice_idx, :]      # W
+                seg_sagittal = seg[:, :, slice_idx]
+                #seg_sagittal = seg_sagittal.permute(1,0)
+                return seg_sagittal
+                #return seg[:, :, slice_idx]      # W
             else:
                 raise ValueError(f"Invalid plane: {plane}")
 
-                
-        img_slices = get_slice(stack_img, slice_idx)
+        img_slices = [None] * 4
+        for index in range(4):
+            img_slices[index] = get_slice(stack_img, slice_idx, index)
+        #img_slices = get_slice(stack_img, slice_idx) #img_slices is a tensor
         #seg_slice = get_slice(seg_img.unsqueeze(0) if seg_img.ndim == 3 else seg_img, slice_idx)[0]
         seg_slice = get_seg_slice(seg_img, slice_idx)
-        print(f"Image slice shape: {img_slices.shape}")  # Should be [C, H, W]
-        print(f"Seg slice shape: {seg_slice.shape}")     # Should be [H, W]
+        #print(f"Image slice shape: {img_slices.shape}")  # Should be [C, H, W]
+        #print(f"Seg slice shape: {seg_slice.shape}")     # Should be [H, W]
         titles = ["FLAIR", "T1", "T1CE", "T2"]
         fig, axes = plt.subplots(1, 5, figsize=(18, 4))
 
