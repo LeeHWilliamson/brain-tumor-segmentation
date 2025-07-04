@@ -27,6 +27,25 @@ def stackTensors(subject_dict): #stack tensors along new (4th) dimensions
     new_dict["image"] = torch.stack([subject_dict["flair"], subject_dict["t1"], subject_dict["t1ce"], subject_dict["t2"]])
     new_dict["seg"] = subject_dict["seg"]
     return new_dict 
+    
+def normalizeIntensities(subject_dict): # normalize pixel intensities for each channel in image and then for the label
+    '''
+    Assumes tensors are of shape (C, X, Y, Z)
+    '''
+    C = subject_dict["image"].shape[0] #channel == [0, 1, 2, 3]
+    for c in range(C):
+        channel = subject_dict["image"][c]
+        # Flatten to compute percentiles
+        flat = channel.flatten()
+        p1 = torch.quantile(flat, 1 / 100.0)
+        p99 = torch.quantile(flat, 99 / 100.0)
+
+        # Clip and normalize
+        channel = torch.clamp(channel, p1, p99)
+        channel = (channel - p1) / (p99 - p1 + 1e-8)
+        subject_dict["image"][c] = channel
+    
+    return subject_dict
 
 def cropToForeground(subject_dict): #this removes the background from images, we find bounding box for stacked images, and then use that for label as well
     # if "image" in subject_dict.keys(): #if we have permuted
