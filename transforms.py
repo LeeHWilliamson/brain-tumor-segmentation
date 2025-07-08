@@ -1,9 +1,16 @@
 import nibabel as nib #for loading niftis
+from scipy.ndimage import zoom #for interpolating and resampling images
 import torch
 
 def loadimagesd(subject_dict): #pass dict of filepaths
+    subject_dict["metadata"] = {}
+    subject_dict["metadata"]["affines"] = {}
     for key in subject_dict:
-        subject_dict[key] = nib.load(subject_dict[key]).get_fdata()
+        if key == "metadata":
+            continue
+        image = nib.load(subject_dict[key])
+        subject_dict[key] = image.get_fdata()
+        subject_dict["metadata"]["affines"][key] = image.affine
     return subject_dict
 
 '''
@@ -17,6 +24,8 @@ def permutechannels(subject_dict): #pass dict of torch tensors, we do this after
 
 def toTensor(subject_dict): #convert numpy arrays to tensors
     for key in subject_dict:
+        if key == "metadata":
+            continue
         subject_dict[key] = torch.tensor(subject_dict[key], dtype=torch.float32)
         #subject_dict[key] = subject_dict[key].unsqueeze(0) #insert channel dimension at first index
         print(subject_dict[key].shape)
@@ -26,7 +35,53 @@ def stackTensors(subject_dict): #stack tensors along new (4th) dimensions
     new_dict = {}
     new_dict["image"] = torch.stack([subject_dict["flair"], subject_dict["t1"], subject_dict["t1ce"], subject_dict["t2"]])
     new_dict["seg"] = subject_dict["seg"]
+    new_dict["metadata"] = subject_dict["metadata"]
     return new_dict 
+
+def voxelSpacing(subject_dict, targetSpacing):
+    #this function will manipulate the voxel spacing of our original images based on the dimensions specified by user
+    #Two mri images may have the same number of pixels, but differ in voxel spacing. This may manifest visually as rendering images at different resolutions
+    #For example, as standard MRI image may have a voxel spacing of 1, meaning each voxel accounts for 1mm of real-world space, another MRI image may have a voxel spacing of 2. Meaning each rendered pixel accounts for 2mm of real-world space.
+    #If we are going to accurately compare images, we need to account for this, a tumor that consist of 10 pixels in the former spacing may appear larger than the same tumor in the latter image! Despite being the same real-world size.
+    affineDimensions = {} #dimensions of each voxel
+    newSpacing = {} 
+    originalSizes = {} #original PHYSICAL size of the image
+    newSizes = {} #size of image after pixels are resize and image resampled
+    for key in subject_dict["metadata"]["affines"]:
+        originalSpacing = [0]*3
+        originalSpacing[0] = abs(subject_dict["metadata"]["affines"][key][0][0]) #original spacing in x dimension
+        originalSpacing[1] = abs(subject_dict["metadata"]["affines"][key][1][1]) #orignal spacing in y dimension
+        originalSpacing[2] = abs(subject_dict["metadata"]["affines"][key][2][2]) #original spacing in z dimension
+        affineDimensions[key] = originalSpacing
+        subject_dict["metadata"]["originalSpacing"] = affineDimensions
+        scaledPixels = []
+        for index in range(len(originalSpacing)):
+            scaledPixels.append(originalSpacing[index] * targetSpacing[index])
+        newSpacing[key] = scaledPixels
+        subject_dict["metadata"]["originalSpacing"] = newSpacing[key]
+        originalSizes[key] = (subject_dict[key].shape[0] * affineDimensions[key][0], subject_dict[key].shape[1] * affineDimensions[key][1], subject_dict[key].shape[2] * affineDimensions[key][2])
+        subject_dict["metadata"]["originalSizes"] = originalSizes
+        newSizes[key] = (originalSizes[key][0] // targetSpacing[0], originalSizes[key][1] // targetSpacing[1], originalSizes[key][2] // targetSpacing[2])
+        subject_dict["metadata"]["newSizes"] = newSizes
+    print(subject_dict["metadata"]["originalSpacing"])
+    print(subject_dict["metadata"]["originalSizes"])
+    print(subject_dict["metadata"]["newSizes"])
+    #now we need to resample each modality and our image (still in our subject[key] for loop)
+    for key in subject_dict:
+        if key == "metadata":
+            continue  # skip metadata key
+    
+        zoom_factors = [
+            orig / new
+            for orig, new in zip(
+                subject_dict["metadata"]["originalSizes"][key],
+                subject_dict["metadata"]["newSizes"][key]
+            )
+        ]
+    
+        interp_order = 0 if key == "seg" else 1  # nearest for label, linear for images
+    
+        subject_dict[key] = zoom(subject_dict[key], zoom_factors, order=interp_order)
     
 def normalizeIntensities(subject_dict): # normalize pixel intensities for each channel in image and then for the label
     '''
