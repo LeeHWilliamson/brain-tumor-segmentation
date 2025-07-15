@@ -1,18 +1,34 @@
 from torch.utils.data import Dataset
 from transforms import loadimagesd
+import psutil
+import gc
+import time
 
 class TrainDataset(Dataset): #will chain torch transforms in main
-    def __init__(self, niftiFiles, transform, augment, cache, training):
+    def __init__(self, niftiFiles, transform, augment, cache, training, max_cache=None):
         self.niftiFiles = niftiFiles
         self.transform = transform
         self.augment = augment
         self.cache = cache
         self.training = training
+        self.max_cache =max_cache if max_cache is not None else len(niftFiles) #fail to use max_cache at your own peril
         self.cacheData = {}
 
         if self.cache:
-            for subjectIndex in range(len(niftiFiles)):
+            for subjectIndex in range(min(self.max_cache, len(niftiFiles))): #we don't have enough ram to cache all images at the same time
+                if subjectIndex == 0:
+                    print(self.niftiFiles[subjectIndex])
                 self.cacheData[subjectIndex] = loadimagesd(self.niftiFiles[subjectIndex])
+            # for i, subject in enumerate(self.niftiFiles):
+            #     sample = loadimagesd(subject)
+            #     self.cacheData[i] = sample
+
+            #     if i % 10 == 0:
+            #         mem = psutil.virtual_memory()
+            #         print(f"[{i}] RAM used: {mem.used / 1e9:.2f} GB / {mem.total / 1e9:.2f} GB")
+            #         print(f"[{i}] Cache size so far: {len(self.cacheData)}")
+            #         gc.collect()
+            #         time.sleep(0.1)
 
     def __len__(self):
         return len(self.niftiFiles)
@@ -29,8 +45,8 @@ class TrainDataset(Dataset): #will chain torch transforms in main
         return sample
 
     def show_sample(self, plane, slice_idx=None):
-        stack_img = sample["image"]
-        seg_img = sample["seg"]
+        stack_img = self.sample["image"]
+        seg_img = self.sample["seg"]
     
         if plane == 'axial':
             max_slice = stack_img.shape[1] - 1

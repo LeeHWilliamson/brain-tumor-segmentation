@@ -2,6 +2,8 @@ import nibabel as nib #for loading niftis
 from scipy.ndimage import zoom #for interpolating and resampling images
 import torch
 import torch.nn.functional as F
+import numpy as np
+import random
 
 def loadimagesd(subject_dict): #pass dict of filepaths
     subject_dict["metadata"] = {}
@@ -10,7 +12,7 @@ def loadimagesd(subject_dict): #pass dict of filepaths
         if key == "metadata":
             continue
         image = nib.load(subject_dict[key])
-        subject_dict[key] = image.get_fdata()
+        subject_dict[key] = image.get_fdata().astype(np.float32)
         subject_dict["metadata"]["affines"][key] = image.affine
     return subject_dict
 
@@ -226,8 +228,8 @@ class DivisiblePad:
 RANDOM TRANSFORMS: these transforms are reapplied every training loop (epoch)
 '''
 def random_flip(subject_dict): #flip image over axis, like a whole new brain!
-    axis = random.choice([0,1,2])
+    axis = random.choice([1,2,3])
     if random.random() < 0.5:
-        subject_dict["image"] = torch.flip(subject_dict["image"], axis=axis)
-        subject_dict["seg"] = torch.flip(subject_dict["seg"], axis=axis)
+        subject_dict["image"] = torch.flip(subject_dict["image"], dims=(axis,))
+        subject_dict["seg"] = torch.flip(subject_dict["seg"], dims=(axis,))
     return subject_dict
