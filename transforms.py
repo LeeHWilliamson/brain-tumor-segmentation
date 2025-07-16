@@ -228,8 +228,9 @@ class DivisiblePad:
 RANDOM TRANSFORMS: these transforms are reapplied every training loop (epoch)
 '''
 def random_flip(subject_dict): #flip image over axis, like a whole new brain!
-    axis = random.choice([1,2,3])
+    axis = random.choice([2,3])
     if random.random() < 0.5:
         subject_dict["image"] = torch.flip(subject_dict["image"], dims=(axis,))
-        subject_dict["seg"] = torch.flip(subject_dict["seg"], dims=(axis,))
+        segAxis = axis - 2
+        subject_dict["seg"] = torch.flip(subject_dict["seg"], dims=(segAxis,))
     return subject_dict

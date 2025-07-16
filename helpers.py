@@ -161,7 +161,9 @@ def show_sample(training_data, sample_idx, plane, slice_idx=None):
         axes[4].axis("off")
 
         plt.tight_layout()
+        plt.savefig("sample_visualizationZZ.png")
         plt.show()
+        
 
 def plot_intensity_histograms(subject_dict):
     plt.figure(figsize=(10, 6))

@@ -44,7 +44,7 @@ class TrainDataset(Dataset): #will chain torch transforms in main
             sample = self.augment(sample)
         return sample
 
-    def show_sample(self, plane, slice_idx=None):
+    def show_processed_sample(self, plane, slice_idx=None):
         stack_img = self.sample["image"]
         seg_img = self.sample["seg"]
     
