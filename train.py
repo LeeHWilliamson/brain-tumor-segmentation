@@ -13,7 +13,6 @@ from transforms import loadimagesd, permutechannels, toTensor, stackTensors, cro
 from utils import (
     load_checkpoint,
     save_checkpoint,
-    get_loaders,
     check_accuracy,
     save_predictions_as_imgs,
 )
@@ -28,10 +27,6 @@ IMAGE_HEIGHT = 150
 IMAGE_WIDTH = 182
 PIN_MEMORY = True
 LOAD_MODEL = False
-# TRAIN_IMG_DIR= "data/train_images/"
-# TRAIN_MASK_DIR = "data/train_masks/"
-# VAL_IMG_DIR = "data/val_images/"
-# VAL_MASK_DIR = "data/val_masks/"
 
 def train_fn(loader, model, optimizer, loss_fn, scaler):
     loop = tqdm(loader)
@@ -65,18 +60,8 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-    # train_loader, val_loader = get_loaders(
-    #     #train image directory
-    #     #train seg directory
-    #     #val img directory
-    #     #val mask directory
-    #     #batch_size
-    #     #train transforms
-    #     #val transforms
-    #     #num_workers
-    #     #pin_memory
-    # )
+    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY)
+
 
     if LOAD_MODEL:
         load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)

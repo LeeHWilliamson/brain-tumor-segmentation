@@ -11,7 +11,7 @@ class TrainDataset(Dataset): #will chain torch transforms in main
         self.augment = augment
         self.cache = cache
         self.training = training
-        self.max_cache =max_cache if max_cache is not None else len(niftFiles) #fail to use max_cache at your own peril
+        self.max_cache = max_cache if max_cache is not None else len(niftFiles) #fail to use max_cache at your own peril
         self.cacheData = {}
 
         if self.cache:
@@ -34,7 +34,7 @@ class TrainDataset(Dataset): #will chain torch transforms in main
         return len(self.niftiFiles)
 
     def __getitem__(self, index):
-        if self.cache:
+        if self.cache and index in self.cacheData:
             sample = self.cacheData[index]
         else:
             sample = loadimagesd(self.niftiFiles[index])

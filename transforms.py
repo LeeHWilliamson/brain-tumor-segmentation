@@ -12,7 +12,10 @@ def loadimagesd(subject_dict): #pass dict of filepaths
         if key == "metadata":
             continue
         image = nib.load(subject_dict[key])
-        subject_dict[key] = image.get_fdata().astype(np.float32)
+        if key != "seg":
+            subject_dict[key] = image.get_fdata().astype(np.float32)
+        else:
+            subject_dict[key] = image.get_fdata().astype(np.long)
         subject_dict["metadata"]["affines"][key] = image.affine
     return subject_dict
 
@@ -24,7 +27,7 @@ def permutechannels(subject_dict): #pass dict of torch tensors, we do this after
     print("before permute", subject_dict["image"].shape)
     subject_dict["image"] = subject_dict["image"].permute(0, 3, 2, 1) #go from [c, x, y, z] to [c, z, y, x]
     subject_dict["seg"] = subject_dict["seg"].permute(2, 1, 0) #go from [x, y, z] to [z, y, x]
-    print("before permute", subject_dict["image"].shape)
+    print("after permute", subject_dict["image"].shape)
     return subject_dict
 
 def toTensor(subject_dict): #convert numpy arrays to tensors
@@ -175,6 +178,21 @@ subject[0]["seg"] = lut[subject[0]["seg"].long()]
     '''
     return subject_dict
 
+def padToShape(subject_dict, target_shape = (4, 170, 170, 140)): #we need a uniform size for batch operations
+    img = subject_dict["image"]
+    seg = subject_dict["seg"]
+
+    pad = []
+    for dim, target in zip(img.shape[::-1], target_shape[::-1]):
+        total_pad = max(target-dim, 0)
+        pad.extend([total_pad // 2, total_pad - total_pad // 2])
+    img = torch.nn.functional.pad(img, pad, mode='constant', value=0)
+    seg = torch.nn.functional.pad(seg, pad[0:6], mode='constant', value = 0)
+    
+    subject_dict["image"] = img
+    subject_dict["seg"] = seg
+    return subject_dict
+
 class DivisiblePad:
     def __init__(self, divisor=16):
         self.divisor = divisor
@@ -206,22 +224,6 @@ class DivisiblePad:
         sample["image"] = image
         sample["seg"] = seg
         return sample
-# def divisiblePad(subject_dict, pad):
-#     _, D, H, W = subject_dict["image"].shape
-
-#     def get_pad(dim_size):
-#         remainder = dim_size % 16
-#         return 0 if remainder == 0 else 16 - remainder
-#     pad_D = get_pad(D)
-#     pad_H = get_pad(H)
-#     pad_W = get_pad(W)
-
-#     # F.pad expects the padding in (W_left, W_right, H_left, H_right, D_left, D_right)
-#     # We'll pad only on the "right" side for simplicity
-#     padding = (0, pad_W, 0, pad_H, 0, pad_D)  # no left padding
-#     subject_dict["image"] = F.pad(subject_dict["image"], padding, mode='constant', value=0)
-
-#     return subject_dict
 
 
 '''
