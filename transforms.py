@@ -178,14 +178,43 @@ subject[0]["seg"] = lut[subject[0]["seg"].long()]
     '''
     return subject_dict
 
-def padToShape(subject_dict, target_shape = (4, 170, 170, 140)): #we need a uniform size for batch operations
+def centerCropIfLargerThan(subject_dict, target_shape=(4, 176, 176, 160)):
+    img = subject_dict["image"]
+    seg = subject_dict["seg"]
+
+    _, D, H, W = img.shape
+    _, td, th, tw = target_shape
+
+    #Determine crop indices for D, H, W
+    def crop_indices(current, target):
+        if current <= target:
+            return 0, current
+        start = (current - target) // 2
+        end = start + target
+        return start, end
+    d_start, d_end = crop_indices(D,td)
+    h_start, h_end = crop_indices(H, th)
+    w_start, w_end = crop_indices(W, tw)
+
+    img = img[:, d_start:d_end, h_start:h_end, w_start:w_end]
+    seg = seg[d_start:d_end, h_start:h_end, w_start:w_end]
+
+    subject_dict["image"] = img
+    subject_dict["seg"] = seg
+
+    return subject_dict
+
+def padToShape(subject_dict, target_shape = (4, 176, 176, 160)): #we need a uniform size for batch operations
     img = subject_dict["image"]
     seg = subject_dict["seg"]
 
     pad = []
     for dim, target in zip(img.shape[::-1], target_shape[::-1]):
-        total_pad = max(target-dim, 0)
-        pad.extend([total_pad // 2, total_pad - total_pad // 2])
+        if dim > target:
+            pad.extend([0, 0]) #don't pad this dimension
+        else:
+            total_pad = max(target-dim, 0)
+            pad.extend([total_pad // 2, total_pad - total_pad // 2]) #pad on both ends
     img = torch.nn.functional.pad(img, pad, mode='constant', value=0)
     seg = torch.nn.functional.pad(seg, pad[0:6], mode='constant', value = 0)
     
