@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import Dataset
 from transforms import loadimagesd
 import psutil
@@ -11,38 +12,77 @@ class TrainDataset(Dataset): #will chain torch transforms in main
         self.augment = augment
         self.cache = cache
         self.training = training
-        self.max_cache = max_cache if max_cache is not None else len(niftFiles) #fail to use max_cache at your own peril
+        self.max_cache = max_cache if max_cache is not None else len(niftiFiles) #fail to use max_cache at your own peril
         self.cacheData = {}
 
         if self.cache:
             for subjectIndex in range(min(self.max_cache, len(niftiFiles))): #we don't have enough ram to cache all images at the same time
-                if subjectIndex == 0:
-                    print(self.niftiFiles[subjectIndex])
+                # if subjectIndex == 0:
+                #     print(self.niftiFiles[subjectIndex])
+                print(f"Caching index {subjectIndex} / {len(niftiFiles)}")
                 self.cacheData[subjectIndex] = loadimagesd(self.niftiFiles[subjectIndex])
-            # for i, subject in enumerate(self.niftiFiles):
-            #     sample = loadimagesd(subject)
-            #     self.cacheData[i] = sample
 
-            #     if i % 10 == 0:
-            #         mem = psutil.virtual_memory()
-            #         print(f"[{i}] RAM used: {mem.used / 1e9:.2f} GB / {mem.total / 1e9:.2f} GB")
-            #         print(f"[{i}] Cache size so far: {len(self.cacheData)}")
-            #         gc.collect()
-            #         time.sleep(0.1)
 
     def __len__(self):
         return len(self.niftiFiles)
 
     def __getitem__(self, index):
-        if self.cache and index in self.cacheData:
-            sample = self.cacheData[index]
-        else:
-            sample = loadimagesd(self.niftiFiles[index])
-        if self.transform:
-            sample = self.transform(sample)
-        if self.training:
-            sample = self.augment(sample)
-        return sample
+        try:
+            if self.cache and index in self.cacheData:
+                sample = self.cacheData[index]
+            else:
+                sample = loadimagesd(self.niftiFiles[index])
+            # sample = self.cacheData[index] if self.cache and index in self.cacheData else loadimagesd(self.niftiFiles[index])
+
+            # Safety: check for string where tensor should be
+            # if isinstance(sample, str):
+            #     raise TypeError(f"Sample at index {index} is unexpectedly a string: {sample}")
+            # assert isinstance(sample, dict), f"Sample {index} is not a dict"
+            # print("KEYS ARE ")
+            # for key in sample.keys():
+            #     print(key)
+            # assert "image" in sample and "seg" in sample, f"Missing keys in {index}"
+            # assert isinstance(sample["image"], torch.Tensor), f"Image is {type(sample['image'])}"
+            # assert isinstance(sample["seg"], torch.Tensor), f"Seg is {type(sample['seg'])}"
+
+            if self.transform:
+                try:
+                    print("sample is currently ", sample)
+                    sample = self.transform(sample)
+                except Exception as e:
+                    print(f"[TRANSFORM ERROR] Index {index}: {e}")
+                    raise
+            if self.training and self.augment:
+                try:
+                    sample = self.augment(sample)
+                except Exception as e:
+                    print(f"[AUGMENT ERROR] Index {index}: {e}")
+                    raise
+            #check after transforms
+            assert isinstance(sample, dict), f"Sample {index} is not a dict"
+            assert "image" in sample and "seg" in sample, f"Missing keys in {index}"
+            assert isinstance(sample["image"], torch.Tensor), f"Image is {type(sample['image'])}"
+            assert isinstance(sample["seg"], torch.Tensor), f"Seg is {type(sample['seg'])}"
+            # label sanity
+            uniq = torch.unique(sample["seg"])
+            assert all(v.item() in (0,1,2,3) for v in uniq), uniq
+            # image = sample["image"].float() #THIS APPROACH DID NOT CLEAR OUT UNNECESSARY METADATA
+            # label = sample["seg"].long()
+            # return {
+            #     "image": image,
+            #     "seg": label
+            # }
+            # print(sample["image"].shape)
+            # print(sample["seg"].shape)
+            sample = {
+                "image": sample["image"].float(),
+                "seg": sample["seg"].long()
+            }
+
+            return sample
+        except Exception as e:
+            print(f"[DATASET ERROR] Index {index}: {e}")
+            raise
 
     def show_processed_sample(self, plane, slice_idx=None):
         stack_img = self.sample["image"]
