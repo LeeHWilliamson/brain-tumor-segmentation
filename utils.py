@@ -92,7 +92,8 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
             # )
             tversky = tversky_loss(probs, y1h, alpha=0.8, beta=0.2,
                             exclude_bg=True, class_weights=dice_weights)
-            batch_loss = ce + lambda_dice * tversky
+            # batch_loss = ce + lambda_dice * tversky
+            batch_loss = ce #lets get rid of metrics that may be damaging stability
             total_loss += batch_loss.item()
             num_batches += 1
 
@@ -112,15 +113,16 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
                 total_dice[segClass] += dice
                 total_voxels[segClass] += 1
     # Average only over classes that were present in the dataset
-    avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
-    mean_dice = avg_dice.mean().item() #overall average dice
+    # avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
+    # mean_dice = avg_dice.mean().item() #overall average dice
     avg_loss = total_loss / max(num_batches, 1)
-    for segClass in range(4):
-        print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
-    print(f"Mean Dice: {avg_dice.mean().item():.4f}")
+    # for segClass in range(4):
+    #     print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
+    # print(f"Mean Dice: {avg_dice.mean().item():.4f}")
 
     model.train()
-    return avg_loss, mean_dice, avg_dice.tolist()
+    # return avg_loss, mean_dice, avg_dice.tolist()
+    return avg_loss #only return CE for now
 
 def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     with open('training_log.csv', mode='a', newline='') as file:
@@ -238,3 +240,18 @@ def tversky_loss(probs, y1h, alpha=0.7, beta=0.3, eps=1e-6, exclude_bg=True, cla
     # mask absent classes like we did before
     present = (y1h.sum(dim=dims) > 0).float()
     return (1 - t * present).sum() / (present.sum() + eps)
+
+def has_sufficient_voxels(label, min_voxels={1: 1000, 3: 1000}):
+    unique, counts = torch.unique(label, return_counts=True)
+    class_counts = dict(zip(unique.tolist(), counts.tolist()))
+    for cls, min_count in min_voxels.items():
+        if class_counts.get(cls, 0) < min_count:
+            return False
+    return True
+
+def is_collapsed_prediction(preds, min_voxels = 100):
+    # preds: logits argmax (B, D, H, W)
+    u, c = torch.unique(preds, return_counts=True)
+    class_counts = dict(zip(u.tolist(), c.tolist()))
+    foreground_voxels = sum(class_counts.get(i, 0) for i in [1, 2, 3])
+    return foreground_voxels < min_voxels

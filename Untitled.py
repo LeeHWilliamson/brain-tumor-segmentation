@@ -49,6 +49,8 @@ from utils import (
     one_hot_labels,
     soft_dice_loss,
     tversky_loss,
+    has_sufficient_voxels,
+    is_collapsed_prediction,
 )
 print("torch version: ", torch.__version__)
 print("torchvision version: ", torchvision.__version__)
@@ -79,24 +81,24 @@ else:
 
 
 #next we need to create a list of subjects with highest score (sum of class 1 and 3 voxels)
-curriculumSubjectsIDs = scoreSubjects(numSubjects = 20) #returns a list of (score, subjectID, c0, c1, c2, c3)
-shuffled_curriculum_group = [] #create list of subject ids
-# for subject in curriculumSubjects:
-#     idToGrab = subject[1] #id of subject for which we need the filepath dict
-#     shuffled_curriculum_group.append(all_subjects[idToGrab]) #subject id will correspond to position in all_subjects list, so this will grab the proper dict
+# curriculumSubjectsIDs = scoreSubjects(numSubjects = 20) #returns a list of (score, subjectID, c0, c1, c2, c3)
+# shuffled_curriculum_group = [] #create list of subject ids
+# # for subject in curriculumSubjects:
+# #     idToGrab = subject[1] #id of subject for which we need the filepath dict
+# #     shuffled_curriculum_group.append(all_subjects[idToGrab]) #subject id will correspond to position in all_subjects list, so this will grab the proper dict
 
-for index in range(len(curriculumSubjectsIDs)):
-    subjectID = curriculumSubjectsIDs[index][1]
-    shuffled_curriculum_group.append(all_subjects_dict[subjectID]) 
-random.shuffle(shuffled_curriculum_group)
-curriculum_group_train = shuffled_curriculum_group[:15]
-curriculum_group_val = shuffled_curriculum_group[15:]
-print(curriculum_group_train)
-print(curriculum_group_val)
-curriculum_transform = transforms.Compose([toTensor, stackTensors, remapLabel, permutechannels, classCenteredCrop(classes=[1,3]), normalizeIntensities,  divisiblePad])
-curriculum_augment = transforms.Compose([random_flip, random_rot90])
-curriculum_train_dataset = TrainDataset(niftiFiles=curriculum_group_train, transform=curriculum_transform, augment=curriculum_augment, cache=True, training=True, max_cache=15)
-curriculum_val_dataset = TrainDataset(niftiFiles=curriculum_group_val, transform=curriculum_transform, augment=None, cache=False, training=False, max_cache=0)
+# for index in range(len(curriculumSubjectsIDs)):
+#     subjectID = curriculumSubjectsIDs[index][1]
+#     shuffled_curriculum_group.append(all_subjects_dict[subjectID]) 
+# random.shuffle(shuffled_curriculum_group)
+# curriculum_group_train = shuffled_curriculum_group[:15]
+# curriculum_group_val = shuffled_curriculum_group[15:]
+# # print(curriculum_group_train)
+# # print(curriculum_group_val)
+# curriculum_transform = transforms.Compose([toTensor, stackTensors, remapLabel, permutechannels, classCenteredCrop(classes=[1,3]), normalizeIntensities,  divisiblePad])
+# curriculum_augment = transforms.Compose([random_flip, random_rot90])
+# curriculum_train_dataset = TrainDataset(niftiFiles=curriculum_group_train, transform=curriculum_transform, augment=curriculum_augment, cache=True, training=True, max_cache=15)
+# curriculum_val_dataset = TrainDataset(niftiFiles=curriculum_group_val, transform=curriculum_transform, augment=None, cache=False, training=False, max_cache=0)
 
 # train_subjects = train_subjects[:4]
 # val_subjects = val_subjects[:4]
@@ -159,7 +161,7 @@ apply will change this datatype to a float... We will need to make sure we chang
 '''
 Lets test loading images...
 '''
-'''
+
 def debug_wrapper(name, func):
     def wrapped(x):
         print(f"[DEBUG] {name} START")
@@ -179,7 +181,7 @@ augment = transforms.Compose([random_flip, random_rot90])
 print("***BUILDING DATASETS*****")
 train_dataset = TrainDataset(niftiFiles=train_subjects, transform=transform, augment=augment, cache=True, training=True, max_cache=118)
 val_dataset = TrainDataset(niftiFiles=val_subjects, transform=transform, augment=None, cache=False, training=False, max_cache=0)
-'''
+
 # train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 
 # val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
@@ -260,22 +262,22 @@ val_dataset = TrainDataset(niftiFiles=val_subjects, transform=transform, augment
 #print(torch.unique(train_dataset[0]["seg"]))
 
 #Hyperparameters
-LEARNING_RATE = 1e-3 #4
+LEARNING_RATE = 1e-4 #3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 1
-NUM_EPOCHS = 20
+NUM_EPOCHS = 10
 NUM_WORKERS = 0
 PIN_MEMORY = True
-LOAD_MODEL = False
+LOAD_MODEL = True
 
 # dummy_laoder = DataLoader(DummyDataset(), batch_size=2, shuffle=False, num_workers=2)
-'''
+
 print("****BUILDING DATALOADERS****")
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
-'''
-train_loader = DataLoader(curriculum_train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
-val_loader = DataLoader(curriculum_val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
+
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
 # print(f"Loader length: {len(train_loader)}")
 # print(f"Batch size: {train_loader.batch_size}")
 
@@ -284,33 +286,42 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
     loop.set_description(f"Epoch {epoch+1}/{NUM_EPOCHS}")
     c0 = c1 = c2 = c3 = 0
     for batch_idx, batch in enumerate(loop): #once upon a time I dreamed of having batch size > 1...
+        
         data = batch["image"].to(device=DEVICE)
         targets = batch["seg"].long().to(device=DEVICE)
+        # if not has_sufficient_voxels(targets):
+        #     print("skipping image with rare class")
+        #     continue
+        print("Input stats:", data.min().item(), data.max().item(), data.mean().item(), data.std().item())
         # forward
         
         with torch.amp.autocast("cuda"):
             
+            # with torch.autograd.set_detect_anomaly(True): #give traceback to operation that produces NaNs
             predictions = model(data)
 
             assert predictions.shape[1] == 4
             assert targets.dtype == torch.long
             assert torch.all((targets >= 0) & (targets < 4)), f"unexpected label values in {batch_idx}"
-            assert not torch.isnan(predictions).any(), "NaN in model output"
+            
 
             cross_entropy_loss = loss_ce(predictions, targets)
             probabilities = torch.softmax(predictions, dim=1)
+            if is_collapsed_prediction(probabilities):
+                print("❌ Skipping batch due to collapsed predictions")
+                continue
             y1h = one_hot_labels(targets, C=4).to(DEVICE)
-            tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
+            # tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
             # dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
-            loss = cross_entropy_loss + lambda_dice * tversky
-            if torch.isnan(loss).any():
-                print("NaN detected in loss! Aborting epoch.")
-                break
-
+            # loss = cross_entropy_loss + lambda_dice * tversky
+            loss = cross_entropy_loss #use only cross_entropy until model is stable
+            
             
             print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
-                    f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {tversky.item():.4f} Total: {loss.item():.4f}")
+                    # f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {tversky.item():.4f} Total: {loss.item():.4f}")
+                    f"CE: {cross_entropy_loss.item():.4f}")
             print(f"Prediction shape: {predictions.shape}, Target shape: {targets.shape}")
+            print("Logits stats:", predictions.min().item(), predictions.max().item(), predictions.mean().item())
                 
             u,c = torch.unique(targets, return_counts=True)
             for index in range(len(c)):
@@ -335,21 +346,40 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
             pred = dict(zip(up.tolist(), [v.item() for v in cp]))
             print ("PRED: ", pred)
             # print("PRED:", dict(zip(up.tolist(), [v.item() for v in cp])))
+            assert not torch.isnan(predictions).any(), "NaN in model output"
+            if torch.isnan(loss).any():
+                print("NaN detected in loss! Aborting epoch.")
+                break
+
             log_batch_loss(loss, batch_idx, epoch, gt, pred)
         # optimizer.zero_grad(set_to_none=True)
         #backward
+        loss.backward()
         # optimizer.zero_grad()
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
+        # scaler.scale(loss).backward()
+        # scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         total_norm = 0.0
         for name, param in model.named_parameters():
                 if param.grad is not None:
-                    # 
-                    total_norm += param.grad.detach().data.norm(2).item() ** 2
-                    print(f"{name}: grad norm = {total_norm ** 0.5:.3f}")
-        scaler.step(optimizer)
-        scaler.update()
+                    grad = param.grad.detach()
+                    if torch.isnan(grad).any():
+                        print(f"❌ NaNs detected in gradients of parameter: {name}")
+                        raise ValueError("NaNs in gradients")
+                    grad_norm = grad.data.norm(2).item()
+                    total_norm += grad_norm ** 2
+                    print(f"{name}: grad norm = {grad_norm:.3f}")
+        print(f"Total grad norm = {total_norm ** 0.5:.3f}")
+        
+        for name, param in model.named_parameters():
+            if torch.isnan(param.data).any():
+                print(f"❌ NaNs detected in model parameter values: {name}")
+                raise ValueError("NaNs in model parameters")
+
+        # scaler.step(optimizer)
+        # scaler.update()
+        
+        optimizer.step()
         optimizer.zero_grad(set_to_none=True)
 
         # #check for misalignments
@@ -395,9 +425,12 @@ try:
         if epoch % 5 == 0: #save a checkpoint every 10 epochs
             save_checkpoint(checkpoint)
         # # check accuracy and validation loss
-        val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        # val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         
-        log_val_metrics(epoch, val_loss, mean_dice, class_dice)
+        # log_val_metrics(epoch, val_loss, mean_dice, class_dice)
+        log_val_metrics(epoch, val_loss)
+
         # train_loss, train_mean_dice, train_class_dice = check_accuracy_and_loss(
         # train_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE
         # )

@@ -16,11 +16,13 @@ class DoubleConv3D(nn.Module):
         self.conv = nn.Sequential(
             #3 x 3convolution on way down
             nn.Conv3d(in_channels, out_channels, 3, 1, 1, bias=False), #kernel size = 3, stride = 1, padding = 1, padding of 1 ensures spatial dimensions are unaltered
-            nn.BatchNorm3d(out_channels), #batchNorm cancels any bias
+            # nn.InstanceNorm3d(out_channels, affine=True), 
+            nn.GroupNorm(num_groups=8, num_channels=out_channels),
             nn.ReLU(inplace=True),
             #3 x 3 convolution on way up
             nn.Conv3d(out_channels, out_channels, 3, 1, 1, bias = False),
-            nn.BatchNorm3d(out_channels),
+            # nn.InstanceNorm3d(out_channels, affine=True),
+            nn.GroupNorm(num_groups=8, num_channels=out_channels),
             nn.ReLU(inplace=True),
         )
     def forward(self, x):
