@@ -363,6 +363,8 @@ def divisiblePad(subject_dict, divisor = 16):
 
     subject_dict["image"] = image
     subject_dict["seg"] = seg
+    # print(image.shape)
+    # print(seg.shape)
     del image, seg
     return subject_dict
 
@@ -421,3 +423,64 @@ def random_rot90(subject_dict): #rotate image! wow!
             seg_dims = tuple(dim-1 for dim in axis)
             subject_dict["seg"] = subject_dict["seg"].rot90(k, dims=seg_dims)
     return subject_dict
+
+class SamplePatch:
+    def __init__(self, patch_size=(96, 96, 96), percent_random=0.1):
+        self.patch_size = patch_size
+        self.percent_random = percent_random
+
+    def __call__(self, subject_dict):
+        """
+        Sample a 3D patch from the image and label.
+        
+        If positive=True, patch is centered near a nonzero voxel in the label.
+        If positive=False, patch is fully random (background-only possible).
+        
+        Args:
+            image: numpy array of shape (C, D, H, W)
+            label: numpy array of shape (D, H, W)
+            patch_size: tuple (d, h, w)
+            positive: tuple (targetted : random)
+        
+        Returns:
+            image_patch: numpy array of shape (C, d, h, w)
+            label_patch: numpy array of shape (d, h, w)
+        """
+        image = subject_dict["image"]  # (C, D, H, W), torch.Tensor
+        seg = subject_dict["seg"]      # (D, H, W), torch.Tensor
+
+        C, D, H, W = image.shape
+        pd, ph, pw = self.patch_size
+        max_d = D - pd
+        max_h = H - ph
+        max_w = W - pw
+
+        # Decide patch type
+        if random.random() >= self.percent_random:
+            # Foreground-biased patch
+            foreground_voxels = (seg > 0).nonzero(as_tuple=False)
+            if foreground_voxels.size(0) == 0:
+                return self._random_patch(image, seg, max_d, max_h, max_w)
+
+            index = torch.randint(0, foreground_voxels.size(0), (1,))
+            center = foreground_voxels[index].squeeze()  # (d, h, w)
+            cd, ch, cw = center.tolist()
+
+            sd = min(max(cd - pd // 2, 0), max_d)
+            sh = min(max(ch - ph // 2, 0), max_h)
+            sw = min(max(cw - pw // 2, 0), max_w)
+        else:
+            return self._random_patch(image, seg, max_d, max_h, max_w)
+
+        image_patch = image[:, sd:sd+pd, sh:sh+ph, sw:sw+pw]
+        seg_patch = seg[sd:sd+pd, sh:sh+ph, sw:sw+pw]
+        return {"image": image_patch, "seg": seg_patch}
+
+    def _random_patch(self, image, seg, max_d, max_h, max_w):
+        pd, ph, pw = self.patch_size
+        sd = torch.randint(0, max_d + 1, (1,)).item()
+        sh = torch.randint(0, max_h + 1, (1,)).item()
+        sw = torch.randint(0, max_w + 1, (1,)).item()
+        image_patch = image[:, sd:sd+pd, sh:sh+ph, sw:sw+pw]
+        seg_patch = seg[sd:sd+pd, sh:sh+ph, sw:sw+pw]
+        return {"image": image_patch, "seg": seg_patch}

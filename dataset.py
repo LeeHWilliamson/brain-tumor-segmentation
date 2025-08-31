@@ -47,7 +47,6 @@ class TrainDataset(Dataset): #will chain torch transforms in main
 
             if self.transform:
                 try:
-                    print("sample is currently ", sample)
                     sample = self.transform(sample)
                 except Exception as e:
                     print(f"[TRANSFORM ERROR] Index {index}: {e}")

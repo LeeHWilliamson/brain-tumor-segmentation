@@ -92,8 +92,8 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
             # )
             tversky = tversky_loss(probs, y1h, alpha=0.8, beta=0.2,
                             exclude_bg=True, class_weights=dice_weights)
-            # batch_loss = ce + lambda_dice * tversky
-            batch_loss = ce #lets get rid of metrics that may be damaging stability
+            batch_loss = ce + lambda_dice * tversky
+            # batch_loss = ce #lets get rid of metrics that may be damaging stability
             total_loss += batch_loss.item()
             num_batches += 1
 
@@ -113,16 +113,16 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
                 total_dice[segClass] += dice
                 total_voxels[segClass] += 1
     # Average only over classes that were present in the dataset
-    # avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
-    # mean_dice = avg_dice.mean().item() #overall average dice
+    avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
+    mean_dice = avg_dice.mean().item() #overall average dice
     avg_loss = total_loss / max(num_batches, 1)
-    # for segClass in range(4):
-    #     print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
-    # print(f"Mean Dice: {avg_dice.mean().item():.4f}")
+    for segClass in range(4):
+        print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
+    print(f"Mean Dice: {avg_dice.mean().item():.4f}")
 
     model.train()
-    # return avg_loss, mean_dice, avg_dice.tolist()
-    return avg_loss #only return CE for now
+    return avg_loss, mean_dice, avg_dice.tolist()
+    # return avg_loss #only return CE for now
 
 def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     with open('training_log.csv', mode='a', newline='') as file:
@@ -131,7 +131,7 @@ def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     # if batchIndex == 295:
     #     print("our avg loss for this epoch was sum()")
 
-def log_val_metrics(epoch, val_loss, mean_dice, class_dice):
+def log_val_metrics(epoch, val_loss, mean_dice, class_dice): 
     with open("val_metrics.csv", mode="a", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([epoch, val_loss, mean_dice] + class_dice)
@@ -223,6 +223,10 @@ def soft_dice_loss(probs, y_onehot, eps=1e-6, exclude_bg=True, class_weights=Non
     # else:
     dice_loss = (1 - dice_per_class) * present
     # return (1 - dice_per_class).mean()
+    print("Intersection:", intersection)
+    print("P_sum:", p_sum)
+    print("Y_sum:", y_sum)
+    print("Present:", present)
     return dice_loss.sum() / (present.sum() + eps)
 
 def tversky_loss(probs, y1h, alpha=0.7, beta=0.3, eps=1e-6, exclude_bg=True, class_weights=None):
@@ -239,6 +243,10 @@ def tversky_loss(probs, y1h, alpha=0.7, beta=0.3, eps=1e-6, exclude_bg=True, cla
         t = t * w.unsqueeze(0)
     # mask absent classes like we did before
     present = (y1h.sum(dim=dims) > 0).float()
+    print("TP:", TP)
+    print("FP:", FP)
+    print("FN:", FN)
+    print("Present:", present)
     return (1 - t * present).sum() / (present.sum() + eps)
 
 def has_sufficient_voxels(label, min_voxels={1: 1000, 3: 1000}):
@@ -249,9 +257,26 @@ def has_sufficient_voxels(label, min_voxels={1: 1000, 3: 1000}):
             return False
     return True
 
-def is_collapsed_prediction(preds, min_voxels = 100):
-    # preds: logits argmax (B, D, H, W)
-    u, c = torch.unique(preds, return_counts=True)
-    class_counts = dict(zip(u.tolist(), c.tolist()))
-    foreground_voxels = sum(class_counts.get(i, 0) for i in [1, 2, 3])
-    return foreground_voxels < min_voxels
+def is_collapsed_prediction(logits, min_voxel_ratio=0.02, conf_thresh = 0.9):
+    """
+    Returns True if the predicted mask is mostly background with low confidence on foreground.
+    logits: (B, C, D, H, W)
+    """
+    probs = torch.softmax(logits, dim=1)  # convert to probabilities
+    pred_classes = probs.argmax(dim=1)    # (B, D, H, W)
+    max_probs = probs.max(dim=1)[0]       # confidence per voxel
+
+    B, D, H, W = pred_classes.shape
+    total_voxels = D * H * W
+
+    for b in range(B):
+        fg_voxels = (pred_classes[b] > 0).float().sum()
+        fg_ratio = fg_voxels / total_voxels
+
+        fg_conf = max_probs[b][pred_classes[b] > 0]
+        mean_conf = fg_conf.mean() if fg_conf.numel() > 0 else torch.tensor(0.0, device=probs.device)
+
+        if fg_ratio < min_voxel_ratio and mean_conf < conf_thresh:
+            return True  # collapsed
+
+    return False  # prediction looks valid

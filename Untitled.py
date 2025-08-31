@@ -26,7 +26,7 @@ from dummyDataset import DummyDataset
 from glob import glob
 from pathlib import Path
 from helpers import show_sample, build_img_set, plot_intensity_histograms, estimate_sample_ram_usage, generateSegVoxelCounts, scoreSubjects
-from transforms import loadimagesd, permutechannels, toTensor, stackTensors, cropToForeground, normalizeIntensities, voxelSpacing, remapLabel, divisiblePad, random_flip, random_rot90, padToShape, centerCropIfLargerThan, classCenteredCrop
+from transforms import loadimagesd, permutechannels, toTensor, stackTensors, cropToForeground, normalizeIntensities, voxelSpacing, remapLabel, divisiblePad, random_flip, random_rot90, padToShape, centerCropIfLargerThan, classCenteredCrop, SamplePatch
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -80,7 +80,7 @@ else:
     print("seg_voxel_counts.csv already exists, if you wish to remap seg voxel counts please delete or rename this file")
 
 
-#next we need to create a list of subjects with highest score (sum of class 1 and 3 voxels)
+# next we need to create a list of subjects with highest score (sum of class 1 and 3 voxels)
 # curriculumSubjectsIDs = scoreSubjects(numSubjects = 20) #returns a list of (score, subjectID, c0, c1, c2, c3)
 # shuffled_curriculum_group = [] #create list of subject ids
 # # for subject in curriculumSubjects:
@@ -171,8 +171,8 @@ def debug_wrapper(name, func):
     return wrapped
 shuffled_subjects = train_subjects[:]
 random.shuffle(shuffled_subjects)
-transform = transforms.Compose([toTensor, stackTensors, remapLabel, permutechannels, cropToForeground, normalizeIntensities,  divisiblePad])
-augment = transforms.Compose([random_flip, random_rot90])
+transform = transforms.Compose([toTensor, stackTensors, remapLabel, permutechannels, normalizeIntensities,  divisiblePad])
+augment = transforms.Compose([random_flip, random_rot90, SamplePatch(patch_size=(96,96,96), percent_random=0.2)])
 # cache_capacity_test = TrainDataset(niftiFiles=train_subjects, transform=transform, augment=None, cache=False, training=True, max_cache=0)
 # avg_sample_mb = estimate_sample_ram_usage(cache_capacity_test, 5)
 # total_ram = 14000 #13.7gb
@@ -264,11 +264,11 @@ val_dataset = TrainDataset(niftiFiles=val_subjects, transform=transform, augment
 #Hyperparameters
 LEARNING_RATE = 1e-4 #3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 NUM_EPOCHS = 10
 NUM_WORKERS = 0
 PIN_MEMORY = True
-LOAD_MODEL = True
+LOAD_MODEL = False
 
 # dummy_laoder = DataLoader(DummyDataset(), batch_size=2, shuffle=False, num_workers=2)
 
@@ -276,8 +276,8 @@ print("****BUILDING DATALOADERS****")
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
 
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
+# train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=True)
+# val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
 # print(f"Loader length: {len(train_loader)}")
 # print(f"Batch size: {train_loader.batch_size}")
 
@@ -286,16 +286,18 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
     loop.set_description(f"Epoch {epoch+1}/{NUM_EPOCHS}")
     c0 = c1 = c2 = c3 = 0
     for batch_idx, batch in enumerate(loop): #once upon a time I dreamed of having batch size > 1...
-        
+        if batch["seg"].max() == 0:
+            print("⚠️ Skipping all-background patch")
+            continue
         data = batch["image"].to(device=DEVICE)
         targets = batch["seg"].long().to(device=DEVICE)
-        # if not has_sufficient_voxels(targets):
-        #     print("skipping image with rare class")
-        #     continue
+        if not has_sufficient_voxels(targets):
+            print("skipping image with rare class")
+            continue
         print("Input stats:", data.min().item(), data.max().item(), data.mean().item(), data.std().item())
         # forward
         
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast(device_type = "cuda"):
             
             # with torch.autograd.set_detect_anomaly(True): #give traceback to operation that produces NaNs
             predictions = model(data)
@@ -304,22 +306,34 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
             assert targets.dtype == torch.long
             assert torch.all((targets >= 0) & (targets < 4)), f"unexpected label values in {batch_idx}"
             
-
-            cross_entropy_loss = loss_ce(predictions, targets)
+            print("predictions dtype:", predictions.dtype)
+            print("targets dtype:", targets.dtype)
+            with torch.amp.autocast(device_type = "cuda", enabled=False):
+                cross_entropy_loss = loss_ce(predictions.float(), targets)
+            
+            # if is_collapsed_prediction(predictions):
+            #     print("❌ Skipping batch due to collapsed predictions")
+            #     continue
             probabilities = torch.softmax(predictions, dim=1)
-            if is_collapsed_prediction(probabilities):
-                print("❌ Skipping batch due to collapsed predictions")
-                continue
+            if torch.isnan(probabilities).any():
+                print("❌ NaNs detected in softmax output")
+                raise ValueError("Softmax produced NaNs")
+
+            probabilities = torch.nan_to_num(probabilities, nan=0.0, posinf=1.0, neginf=0.0)
+
             y1h = one_hot_labels(targets, C=4).to(DEVICE)
             # tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
-            # dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
-            # loss = cross_entropy_loss + lambda_dice * tversky
-            loss = cross_entropy_loss #use only cross_entropy until model is stable
+            dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
+            loss = cross_entropy_loss + lambda_dice # * tversky
+            if torch.isnan(loss):
+                print("❌ NaNs in loss BEFORE backward")
+                raise ValueError("Loss is NaN")
+            # loss = cross_entropy_loss #use only cross_entropy until model is stable
             
             
             print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
-                    # f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {tversky.item():.4f} Total: {loss.item():.4f}")
-                    f"CE: {cross_entropy_loss.item():.4f}")
+                    f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {dice.item():.4f} Total: {loss.item():.4f}")
+                    # f"CE: {cross_entropy_loss.item():.4f}")
             print(f"Prediction shape: {predictions.shape}, Target shape: {targets.shape}")
             print("Logits stats:", predictions.min().item(), predictions.max().item(), predictions.mean().item())
                 
@@ -352,12 +366,12 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
                 break
 
             log_batch_loss(loss, batch_idx, epoch, gt, pred)
-        # optimizer.zero_grad(set_to_none=True)
+        
+        optimizer.zero_grad(set_to_none=True)
         #backward
-        loss.backward()
         # optimizer.zero_grad()
-        # scaler.scale(loss).backward()
-        # scaler.unscale_(optimizer)
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         total_norm = 0.0
         for name, param in model.named_parameters():
@@ -376,11 +390,11 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
                 print(f"❌ NaNs detected in model parameter values: {name}")
                 raise ValueError("NaNs in model parameters")
 
-        # scaler.step(optimizer)
-        # scaler.update()
+        scaler.step(optimizer)
+        scaler.update()
         
-        optimizer.step()
-        optimizer.zero_grad(set_to_none=True)
+        # optimizer.step()
+        # optimizer.zero_grad(set_to_none=True)
 
         # #check for misalignments
         # with torch.no_grad():
@@ -399,7 +413,8 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
         loop.set_postfix(loss=loss.item())
 
 model = UNET(in_channels=4, out_channels=4).to(DEVICE) #we will need a channel for each modality
-ce_weights = torch.tensor([0.1, 1.5, 4.0, 2.0], device=DEVICE)  # even harsher penalty for ignoring fg
+# ce_weights = torch.tensor([0.1, 1.5, 4.0, 2.0], device=DEVICE)  # even harsher penalty for ignoring fg
+ce_weights = torch.tensor([1.0, 1.0, 1.0, 1.0], device = DEVICE)
 loss_ce = nn.CrossEntropyLoss(weight=ce_weights) #arcsin? CHANGE THIS TO CROSS ENTROPY LOSS BECAUSE MULTI CHANNEL SEG
 
 dice_weights = ce_weights.clone() #reuse weights for dice emphasis too
@@ -424,12 +439,12 @@ try:
         }
         if epoch % 5 == 0: #save a checkpoint every 10 epochs
             save_checkpoint(checkpoint)
-        # # check accuracy and validation loss
-        # val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
-        val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        # check accuracy and validation loss
+        val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        # val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         
-        # log_val_metrics(epoch, val_loss, mean_dice, class_dice)
-        log_val_metrics(epoch, val_loss)
+        log_val_metrics(epoch, val_loss, mean_dice, class_dice)
+        # log_val_metrics(epoch, val_loss)
 
         # train_loss, train_mean_dice, train_class_dice = check_accuracy_and_loss(
         # train_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE
