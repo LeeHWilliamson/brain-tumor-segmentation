@@ -83,47 +83,48 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
 
             # --- validation loss matches training: CE + λ·Dice ---
             ce = loss_ce(logits, y)                            # CE on logits
-            # probs = torch.softmax(logits, dim=1)               # probs for Dice
-            # y1h = one_hot_labels(y, C=4).to(device)  # one-hot on device
-            # dice_l = soft_dice_loss(
-            #     probs, y1h,
-            #     exclude_bg=True,
-            #     class_weights=dice_weights.to(device)
-            # )
+            probs = torch.softmax(logits, dim=1)               # probs for Dice
+            y1h = one_hot_labels(y, C=4).to(device)  # one-hot on device
+            dice_loss = soft_dice_loss(
+                probs, y1h,
+                exclude_bg=True,
+                class_weights=dice_weights.to(device)
+            )
             # tversky = tversky_loss(probs, y1h, alpha=0.8, beta=0.2,
             #                 exclude_bg=True, class_weights=dice_weights)
             # batch_loss = ce + lambda_dice * tversky
-            batch_loss = float(ce.detach()) #lets get rid of metrics that may be damaging stability
+            batch_loss = float(ce.detach()) + lambda_dice * dice_loss #lets get rid of metrics that may be damaging stability
             total_loss += batch_loss #no .item bc we already cast to float
             num_batches += 1
-            del logits, x, y
+            
 
 
             # --- metrics (argmax preds) ---
-            # preds = logits.argmax(dim=1)                       # (B,D,H,W)
-            # for segClass in range(4):
-            #     true_class = (y == segClass).float()
-            #     if true_class.sum() == 0:
-            #             continue  # skip this class if it's not in the ground truth
-            #     pred_class = (preds == segClass).float()
+            preds = logits.argmax(dim=1)                       # (B,D,H,W)
+            for segClass in range(4):
+                true_class = (y == segClass).float()
+                if true_class.sum() == 0:
+                        continue  # skip this class if it's not in the ground truth
+                pred_class = (preds == segClass).float()
 
-            #     intersection = (pred_class*true_class).sum()
-            #     union = pred_class.sum() + true_class.sum()
+                intersection = (pred_class*true_class).sum()
+                union = pred_class.sum() + true_class.sum()
 
-            #     dice = (2 * intersection) / (union + 1e-8)
-            #     total_dice[segClass] += dice
-            #     total_voxels[segClass] += 1
+                dice = (2 * intersection) / (union + 1e-8)
+                total_dice[segClass] += dice
+                total_voxels[segClass] += 1
     # Average only over classes that were present in the dataset
-    # avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
-    # mean_dice = avg_dice.mean().item() #overall average dice
+    avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
+    mean_dice = avg_dice.mean().item() #overall average dice
     avg_loss = total_loss / max(num_batches, 1)
     # for segClass in range(4):
     #     print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
     # print(f"Mean Dice: {avg_dice.mean().item():.4f}")
 
     model.train()
-    # return avg_loss, mean_dice, avg_dice.tolist()
-    return avg_loss #only return CE for now
+    del logits, x, y
+    return avg_loss, mean_dice, avg_dice.tolist()
+    # return avg_loss #only return CE for now
 
 def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     with open('training_log.csv', mode='a', newline='') as file:
@@ -132,11 +133,11 @@ def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     # if batchIndex == 295:
     #     print("our avg loss for this epoch was sum()")
 
-def log_val_metrics(epoch, val_loss):#, mean_dice, class_dice): 
+def log_val_metrics(epoch, val_loss, mean_dice, class_dice): 
     with open("val_metrics.csv", mode="a", newline="") as file:
         writer = csv.writer(file)
-        # writer.writerow([epoch, val_loss, mean_dice] + class_dice)
-        writer.writerow([epoch, val_loss])
+        writer.writerow([epoch, val_loss, mean_dice] + class_dice)
+        # writer.writerow([epoch, val_loss])
 
 
 def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda", num_classes=4):

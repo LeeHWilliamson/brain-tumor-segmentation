@@ -267,10 +267,10 @@ val_dataset = TrainDataset(niftiFiles=val_subjects, transform=val_transform, aug
 LEARNING_RATE = 1e-4 #3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 2
-NUM_EPOCHS = 20
+NUM_EPOCHS = 2
 NUM_WORKERS = 0
 PIN_MEMORY = True
-LOAD_MODEL = False
+LOAD_MODEL = True
 
 # dummy_laoder = DataLoader(DummyDataset(), batch_size=2, shuffle=False, num_workers=2)
 
@@ -337,10 +337,10 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
             # probabilities = torch.nan_to_num(probabilities, nan=0.0, posinf=1.0, neginf=0.0)
             probabilities = probabilities.clamp(1e-6, 1 - (1e-6))
 
-            #y1h = one_hot_labels(targets, C=4).to(DEVICE, predictions.dtype())
+            y1h = one_hot_labels(targets, C=4).to(DEVICE, predictions.dtype)
             # tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
-            #dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
-            loss = cross_entropy_loss # + lambda_dice * dice # * tversky
+            dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
+            loss = cross_entropy_loss + lambda_dice * dice # * tversky
             if not torch.isfinite(loss).all():
                 print("❌ NaNs in loss BEFORE backward")
                 raise ValueError("Loss is NaN")
@@ -348,8 +348,8 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
             
             
             print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
-                    # f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {dice.item():.4f} Total: {loss.item():.4f}")
-                    f"CE: {cross_entropy_loss.item():.4f}")
+                    f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {dice.item():.4f} Total: {loss.item():.4f}")
+                    # f"CE: {cross_entropy_loss.item():.4f}")
             print(f"Prediction shape: {predictions.shape}, Target shape: {targets.shape}")
             print("Logits stats:", predictions.min().item(), predictions.max().item(), predictions.mean().item())
                 
@@ -469,12 +469,12 @@ try:
         if epoch % 5 == 0: #save a checkpoint every 10 epochs
             save_checkpoint(checkpoint)
         # check accuracy and validation loss
-        # val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         memoryCheck("pre_val")
-        val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        # val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         
-        # log_val_metrics(epoch, val_loss, mean_dice, class_dice)
-        log_val_metrics(epoch, val_loss)
+        log_val_metrics(epoch, val_loss, mean_dice, class_dice)
+        # log_val_metrics(epoch, val_loss)
         memoryCheck("post_val")
         # train_loss, train_mean_dice, train_class_dice = check_accuracy_and_loss(
         # train_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE
