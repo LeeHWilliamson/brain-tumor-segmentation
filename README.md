@@ -21,7 +21,7 @@ It includes:
 - Visualization utilities and PNG export tools
 - Notebook demos you can run immediately
 
-If you're a **medical professional**, you can jump right into `medical_segmentation.ipynb` to view the model pipeline with explanations at each step. You will not be able to run the model yourself unless you follow the **getting started** section below.
+If you're a **medical professional** and interested more in the big picture design and workflow, you can jump right into `medical_segmentation.ipynb` to view the model pipeline with explanations at each step. You will not be able to run the model yourself unless you follow the **getting started** section below.
 
 If you're a **CS student or learner**, continue reading to explore the internal architecture and extend the project for your own tasks.
 
@@ -55,19 +55,19 @@ This makes it easier to understand and adapt the code to your own segmentation p
 ---
 
 ## Getting Started
-**This project uses a Conda environment, to fully utilize the functions make sure you also have a Conda distribution on your machine**
+
 To test or explore the segmentation pipeline:
 1. Clone the repository.
-2. Create and activate the environment. In your command line...
+2. Install dependencies
+        pip install -r requirements.txt
+3. If you want to run your own training loops, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) or run the following in your command line.
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+4. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
+     a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
+5. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
+6. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
         conda create -n medcv-gpu python=3.10.18
         conda activate medcv-gpu
-3. Install dependencies
-        pip install -r requirements.txt
-4. If you want to run your own training loops, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) or run the following in your command line.
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-6. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
-     a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
-7. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
 
 > **Note:** Training requires a CUDA-enabled GPU. Inference and visualization can be run on CPU. You can easily forgoe training completely and simply look at the metric charts and generated predictions if you don't have an Nvidia GPU.
 
@@ -76,6 +76,7 @@ To test or explore the segmentation pipeline:
 ## Questions or Feedback?
 
 Feel free to open an issue or fork the repo and make it your own. This project is designed to be a learning tool and starting point—your contributions and ideas are welcome!
+I can be contacted at lhwilli4@cougarnet.uh.edu
 
 ---
 
