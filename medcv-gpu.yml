@@ -1,16 +1,11 @@
 name: medcv-gpu
 channels:
-  - pytorch
   - conda-forge
   - defaults
 dependencies:
   - python=3.10
   - pip
   - numpy=2.2
-  - torch=2.7.0  # Matches your dev build
-  - torchvision=0.22.0
-  - torchaudio  # version not pinned, adjust if needed
-  - cudatoolkit=12.1
   - matplotlib
   - scikit-image
   - scikit-learn
@@ -22,8 +17,12 @@ dependencies:
   - jupyterlab
   - ipykernel
   - pip:
+      - torch==2.7.0+cu121
+      - torchvision==0.22.0+cu121
+      - torchaudio==2.2.0  # or whatever version you want
       - albumentations==2.0.8
       - opencv-python==4.11.0.86
       - ipywidgets
       - imageio
       - pyyaml
+    - extra-index-url=https://download.pytorch.org/whl/cu121
