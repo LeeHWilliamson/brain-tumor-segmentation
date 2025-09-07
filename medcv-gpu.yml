@@ -16,10 +16,10 @@ dependencies:
   - scikit-learn
   - nibabel
   - simpleitk
-  - opencv-python-headless
   - jupyterlab
   - tqdm
   - albumentations
   - pillow
   - pip:
+      - opencv-python-headless
       - ipywidgets
