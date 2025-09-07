@@ -52,6 +52,8 @@ from utils import (
     tversky_loss,
     has_sufficient_voxels,
     is_collapsed_prediction,
+    plot_metrics,
+    save_overlays,
 )
 print("torch version: ", torch.__version__)
 print("torchvision version: ", torchvision.__version__)
@@ -267,10 +269,10 @@ val_dataset = TrainDataset(niftiFiles=val_subjects, transform=val_transform, aug
 LEARNING_RATE = 1e-4 #3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 2
-NUM_EPOCHS = 2
+NUM_EPOCHS = 1
 NUM_WORKERS = 0
 PIN_MEMORY = True
-LOAD_MODEL = True
+LOAD_MODEL = False
 
 # dummy_laoder = DataLoader(DummyDataset(), batch_size=2, shuffle=False, num_workers=2)
 
@@ -291,17 +293,19 @@ def memoryCheck(tag):
     print(f"[MEM] {tag} | allocMB={alloc:.1f} reservedMB={resv:.1f} peakMB={peak:.1f}")
 
 
-def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
+def train_fn(loader, model, optimizer, loss_ce, scaler, epoch, start_epoch): #scaler
     loop = tqdm(loader)
     model.train()
-    loop.set_description(f"Epoch {epoch+1}/{NUM_EPOCHS}")
+    loop.set_description(f"Epoch {epoch+start_epoch+1}/{start_epoch+NUM_EPOCHS}")
     c0 = c1 = c2 = c3 = 0
-    for batch_idx, batch in enumerate(loop): #once upon a time I dreamed of having batch size > 1...
+    for batch_idx, batch in enumerate(loop):
         if batch["seg"].max() == 0:
             print("⚠️ Skipping all-background patch")
             continue
         data = batch["image"].to(device=DEVICE)
         targets = batch["seg"].long().to(device=DEVICE)
+        print( "THE DATA IS OF TYPE: ", type(data), data.shape)
+        print( "THE PREDICTIONS ARE OF TYPE", type(targets), targets.shape)
         if not has_sufficient_voxels(targets):
             print("skipping image with rare class")
             continue
@@ -309,8 +313,8 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
         if not torch.isfinite(data).all():
             data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
         print("Input stats:", data.min().item(), data.max().item(), data.mean().item(), data.std().item())
-        # forward
         
+        # forward
         with torch.amp.autocast(device_type = "cuda", enabled = False):
             
             # with torch.autograd.set_detect_anomaly(True): #give traceback to operation that produces NaNs
@@ -329,44 +333,32 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
             # if is_collapsed_prediction(predictions):
             #     print("❌ Skipping batch due to collapsed predictions")
             #     continue
-            probabilities = torch.softmax(predictions, dim=1)
-            if torch.isnan(probabilities).any():
-                print("❌ NaNs detected in softmax output")
-                raise ValueError("Softmax produced NaNs")
+            
 
-            # probabilities = torch.nan_to_num(probabilities, nan=0.0, posinf=1.0, neginf=0.0)
-            probabilities = probabilities.clamp(1e-6, 1 - (1e-6))
-
-            y1h = one_hot_labels(targets, C=4).to(DEVICE, predictions.dtype)
-            # tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
-            dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
-            loss = cross_entropy_loss + lambda_dice * dice # * tversky
+            if epoch < 20:
+                loss = cross_entropy_loss #use only cross_entropy until model is stable
+                print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
+                      f"CE: {cross_entropy_loss.item():.4f}")
+            else:
+                probabilities = torch.softmax(predictions, dim=1)
+                if torch.isnan(probabilities).any():
+                    print("❌ NaNs detected in softmax output")
+                    raise ValueError("Softmax produced NaNs")
+                probabilities = probabilities.clamp(1e-6, 1 - (1e-6))
+                y1h = one_hot_labels(targets, C=4).to(DEVICE, predictions.dtype)
+                # tversky = tversky_loss(probabilities, y1h, alpha=0.8, beta=0.2, exclude_bg=True, class_weights=dice_weights)
+                dice = soft_dice_loss(probabilities, y1h, exclude_bg=True, class_weights=dice_weights)
+                loss = cross_entropy_loss + lambda_dice * dice # * tversky
+                print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
+                        f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {dice.item():.4f} Total: {loss.item():.4f}")
             if not torch.isfinite(loss).all():
                 print("❌ NaNs in loss BEFORE backward")
                 raise ValueError("Loss is NaN")
-            # loss = cross_entropy_loss #use only cross_entropy until model is stable
             
-            
-            print(f"Input device: {data.device}, dtype: {data.dtype}, predictions.dtype{predictions.dtype}  "
-                    f"CE: {cross_entropy_loss.item():.4f} DiceLoss: {dice.item():.4f} Total: {loss.item():.4f}")
-                    # f"CE: {cross_entropy_loss.item():.4f}")
             print(f"Prediction shape: {predictions.shape}, Target shape: {targets.shape}")
             print("Logits stats:", predictions.min().item(), predictions.max().item(), predictions.mean().item())
                 
             u,c = torch.unique(targets, return_counts=True)
-            # for index in range(len(c)):
-            #     if index == 0:
-            #         c[index].item()
-            #         c0 += c[index]
-            #     elif index == 1:
-            #         c[index].item()
-            #         c1 += c[index]
-            #     elif index == 2:
-            #         c[index].item()
-            #         c2 += c[index]
-            #     else:
-            #         c[index].item()
-            #         c3 += c[index]
             for cls_id, cnt in zip(u.tolist(), c.tolist()):
                 if   cls_id == 0: c0 += cnt
                 elif cls_id == 1: c1 += cnt
@@ -435,7 +427,10 @@ def train_fn(loader, model, optimizer, loss_ce, scaler, epoch): #scaler
         #update tqdm loop
         memoryCheck(f"train_b{batch_idx}")
         loop.set_postfix(loss=loss.item())
-        del predictions, probabilities, loss, cross_entropy_loss #y1h, dice
+        if epoch > 20:
+            del predictions, probabilities, loss, cross_entropy_loss #y1h, dice
+        else:
+            del loss, cross_entropy_loss
 
 model = UNET(in_channels=4, out_channels=4).to(DEVICE) #we will need a channel for each modality
 # ce_weights = torch.tensor([0.1, 1.5, 4.0, 2.0], device=DEVICE)  # even harsher penalty for ignoring fg
@@ -449,14 +444,16 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=0)
 
 
 if LOAD_MODEL:
-    load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
+    start_epoch = load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
+else:
+    start_epoch = 0
 scaler = torch.amp.GradScaler(enabled=False) #could save this, but lets just load it everytime
 try:
     for epoch in range(NUM_EPOCHS):
         print(f"\n=== STARTING EPOCH {epoch+1}/{NUM_EPOCHS} ===")
         torch.cuda.reset_peak_memory_stats()
         memoryCheck("epoch_start")
-        train_fn(train_loader, model, optimizer, loss_ce, scaler, epoch) #scaler
+        train_fn(train_loader, model, optimizer, loss_ce, scaler, epoch, start_epoch) #scaler
 
 
         #save model
@@ -469,11 +466,11 @@ try:
         if epoch % 5 == 0: #save a checkpoint every 10 epochs
             save_checkpoint(checkpoint)
         # check accuracy and validation loss
-        val_loss, mean_dice, class_dice = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
+        val_loss, mean_dice, class_dice = check_accuracy_and_loss(epoch+start_epoch, val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         memoryCheck("pre_val")
         # val_loss = check_accuracy_and_loss(val_loader, model, loss_ce, dice_weights, lambda_dice, device=DEVICE)
         
-        log_val_metrics(epoch, val_loss, mean_dice, class_dice)
+        log_val_metrics(start_epoch + epoch, val_loss, mean_dice, class_dice)
         # log_val_metrics(epoch, val_loss)
         memoryCheck("post_val")
         # train_loss, train_mean_dice, train_class_dice = check_accuracy_and_loss(
@@ -485,10 +482,17 @@ try:
         #print some output to a folder
         if epoch == NUM_EPOCHS - 1:
             save_predictions_as_imgs(val_loader, model, folder="saved_images/", device=DEVICE)
+            plot_metrics()
+            save_overlays(val_loader)
         print(f"\n=== FINISHED EPOCH {epoch+1}/{NUM_EPOCHS} ===")
 except Exception as e:
     print(f"[ERROR] Crash at epoch {epoch}: {e}")
-    torch.save(model.state_dict(), f"emergency_backup_epoch_{epoch}.pth")
+    checkpoint = {
+            "epoch" : epoch,
+            "state_dict": cpu_sd #model.state_dict(),
+            # "optimizer":optimizer.state_dict(),
+        }
+    save_checkpoint(checkpoint, Filename= f"backup_checkpoint_e{epoch}")
     raise
 
 # # In[ ]:

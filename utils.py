@@ -5,7 +5,9 @@ import torchvision
 import os
 from dataset import TrainDataset
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 import csv
+import numpy as np
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
     print("=> Saving checkpoint")
@@ -14,6 +16,7 @@ def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
 def load_checkpoint(checkpoint, model):
     print("=> loading checkpoint")
     model.load_state_dict(checkpoint["state_dict"])
+    return checkpoint["epoch"]
 
 def get_loaders(
         train_dir,
@@ -62,7 +65,7 @@ def get_loaders(
 
     return train_loader, val_loader
 
-def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, device="cuda"): #recall we output class for each individual pixel
+def check_accuracy_and_loss(epoch, loader, model, loss_ce, dice_weights, lambda_dice, device="cuda"): #recall we output class for each individual pixel
     model.eval()
     total_dice = torch.zeros(4, device=device) #4 segmentation classes
     total_voxels = torch.zeros(4, device=device) #number of times each class is present across batches (in voxels)
@@ -83,6 +86,7 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
 
             # --- validation loss matches training: CE + λ·Dice ---
             ce = loss_ce(logits, y)                            # CE on logits
+            batch_loss = float(ce.detach())
             probs = torch.softmax(logits, dim=1)               # probs for Dice
             y1h = one_hot_labels(y, C=4).to(device)  # one-hot on device
             dice_loss = soft_dice_loss(
@@ -90,15 +94,7 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
                 exclude_bg=True,
                 class_weights=dice_weights.to(device)
             )
-            # tversky = tversky_loss(probs, y1h, alpha=0.8, beta=0.2,
-            #                 exclude_bg=True, class_weights=dice_weights)
-            # batch_loss = ce + lambda_dice * tversky
             batch_loss = float(ce.detach()) + lambda_dice * dice_loss #lets get rid of metrics that may be damaging stability
-            total_loss += batch_loss #no .item bc we already cast to float
-            num_batches += 1
-            
-
-
             # --- metrics (argmax preds) ---
             preds = logits.argmax(dim=1)                       # (B,D,H,W)
             for segClass in range(4):
@@ -113,31 +109,39 @@ def check_accuracy_and_loss(loader, model, loss_ce, dice_weights, lambda_dice, d
                 dice = (2 * intersection) / (union + 1e-8)
                 total_dice[segClass] += dice
                 total_voxels[segClass] += 1
-    # Average only over classes that were present in the dataset
-    avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
-    mean_dice = avg_dice.mean().item() #overall average dice
+            # tversky = tversky_loss(probs, y1h, alpha=0.8, beta=0.2,
+            #                 exclude_bg=True, class_weights=dice_weights)
+            # batch_loss = ce + lambda_dice * tversky
+            # Average only over classes that were present in the dataset
+            avg_dice = torch.where(total_voxels > 0, total_dice / total_voxels.clamp(min=1), torch.zeros_like(total_dice)) #dice score PER CLASS, average across batches
+            mean_dice = avg_dice.mean().item() #overall average dice
+                
+            total_loss += batch_loss #no .item bc we already cast to float
+            num_batches += 1
+            
+
+    
     avg_loss = total_loss / max(num_batches, 1)
+    avg_loss = avg_loss.item()
     # for segClass in range(4):
     #     print(f"Class {segClass} Dice: {avg_dice[segClass].item():.4f}")
     # print(f"Mean Dice: {avg_dice.mean().item():.4f}")
 
     model.train()
     del logits, x, y
+
     return avg_loss, mean_dice, avg_dice.tolist()
-    # return avg_loss #only return CE for now
 
 def log_batch_loss(loss, batchIndex, epoch, gt, pred):
     with open('training_log.csv', mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([epoch, batchIndex, loss, gt, pred]) #loss already detached no .item needed
-    # if batchIndex == 295:
-    #     print("our avg loss for this epoch was sum()")
+
 
 def log_val_metrics(epoch, val_loss, mean_dice, class_dice): 
     with open("val_metrics.csv", mode="a", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([epoch, val_loss, mean_dice] + class_dice)
-        # writer.writerow([epoch, val_loss])
 
 
 def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda", num_classes=4):
@@ -189,6 +193,93 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
 
     model.train()
 
+def save_overlays(loader, folder = "overlays", device = "cuda", modality_channel=0):
+    os.makedirs(folder, exist_ok=True)
+    for idx, batch in enumerate(loader):       
+        image = batch["image"].to(device) #[B, C, D, H, W]
+        seg = batch["seg"].to(device)  # shape: [B, D, H, W]
+        # Convert to numpy if torch
+        if isinstance(image, torch.Tensor):
+            image = image.detach().cpu().numpy()
+        if isinstance(seg, torch.Tensor):
+            seg = seg.detach().cpu().numpy()
+        image = image[0, modality_channel]  # shape becomes [D, H, W]
+        seg = seg[0]
+        assert image.shape == seg.shape, f"Shape mismatch: {image.shape} vs {seg.shape}"
+        mid_slice = (image.shape[0]) // 2 #use middle slice 
+        # Normalize for display
+        img_slice = image[mid_slice]
+        img_slice = (img_slice - img_slice.min()) / (np.ptp(img_slice) + 1e-8)
+        seg_slice = seg[mid_slice]
+
+        # Default RGBA label colors
+        default_colors = {
+            0: (0, 0, 0, 0),         # background = transparent
+            1: (1, 0, 0, 0.4),     # red
+            2: (0, 1, 0, 0.4),     # green
+            3: (0, 0, 1, 0.4),     # blue
+        }
+
+
+        # Build RGBA overlay
+        overlay = np.zeros((*seg_slice.shape, 4), dtype=np.float32)
+        for class_id, color in default_colors.items():
+            overlay[seg_slice == class_id] = color
+
+        # Plot
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img_slice, cmap="gray")
+        plt.imshow(overlay)
+        plt.title(f"Overlay — Slice {mid_slice}, Channel {modality_channel}")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(f"{folder}/overlay_{idx}_slice{mid_slice}.png")
+        plt.close()
+
+
+
+
+def plot_metrics(csv_path = "val_metrics.csv", show_class_dice=True):
+
+    epochs = []
+    val_loss = []
+    mean_dice = []
+    class_dice = [[], [], [], []]  # class 0–3
+
+    with open(csv_path, "r") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row: continue
+            epoch = int(row[0])
+            loss = float(row[1])
+            dice = float(row[2])
+            class_scores = list(map(float, row[3:]))  # expect 4 classes
+
+            epochs.append(epoch)
+            val_loss.append(loss)
+            mean_dice.append(dice)
+            for i in range(4):
+                class_dice[i].append(class_scores[i] if i < len(class_scores) else 0)
+
+    # --- Plotting ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, val_loss, label="Val Loss", color="red", linewidth=2)
+    plt.plot(epochs, mean_dice, label="Mean Dice", color="green", linewidth=2)
+
+
+    if show_class_dice:
+        colors = ["blue", "orange", "purple", "brown"]
+        for i in range(4):
+            plt.plot(epochs, class_dice[i], label=f"Class {i} Dice", linestyle="--", color=colors[i])
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Metric Value")
+    plt.title("Validation Metrics Over Epochs")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("val_metrics_plot.png")
+    plt.show()
 
 def one_hot_labels(y, C):
     # y: (B, D, H, W) int64 in [0..C-1]
