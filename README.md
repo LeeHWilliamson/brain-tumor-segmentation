@@ -21,7 +21,7 @@ It includes:
 - Visualization utilities and PNG export tools
 - Notebook demos you can run immediately
 
-If you're a **medical professional**, you can jump right into `medical_segmentation.ipynb` to see the model in action with explanations at each step.
+If you're a **medical professional**, you can jump right into `medical_segmentation.ipynb` to view the model pipeline with explanations at each step. You will not be able to run the model yourself unless you follow the **getting started** section below.
 
 If you're a **CS student or learner**, continue reading to explore the internal architecture and extend the project for your own tasks.
 
