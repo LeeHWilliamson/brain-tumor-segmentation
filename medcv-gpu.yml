@@ -19,7 +19,6 @@ dependencies:
   - pip:
       - torch==2.7.0
       - torchvision==0.22.0
-      - torchaudio==2.2.0
       - albumentations==2.0.8
       - opencv-python==4.11.0.86
       - ipywidgets
