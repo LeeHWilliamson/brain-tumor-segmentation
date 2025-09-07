@@ -55,13 +55,15 @@ This makes it easier to understand and adapt the code to your own segmentation p
 ---
 
 ## Getting Started
-
+**This project uses a Conda environment, to fully utilize the functions make sure you also have a Conda distribution on your machine**
 To test or explore the segmentation pipeline:
-
 1. Clone the repository.
-2. Download your dataset (e.g., BraTS) and place it in the appropriate directory.
+2. Create and activate the environment
+        conda create -n medseg python=3.10
+        conda activate medseg
+4. Download your dataset (e.g., BraTS) and place it in the appropriate directory.
      a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
-3. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
+5. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
 
 > **Note:** Training requires a CUDA-enabled GPU. Inference and visualization can be run on CPU. You can easily forgoe training completely and simply look at the metric charts and generated predictions if you don't have an Nvidia GPU.
 
