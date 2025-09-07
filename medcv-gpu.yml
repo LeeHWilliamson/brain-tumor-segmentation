@@ -6,20 +6,24 @@ channels:
 dependencies:
   - python=3.10
   - pip
-  - pytorch>=2.0
-  - torchvision
-  - torchaudio
-  - cudatoolkit=11.8  # Comment this out if installing CUDA via pip
+  - numpy=2.2
+  - torch=2.7.0  # Matches your dev build
+  - torchvision=0.22.0
+  - torchaudio  # version not pinned, adjust if needed
+  - cudatoolkit=12.1
   - matplotlib
-  - numpy
   - scikit-image
   - scikit-learn
-  - nibabel
-  - simpleitk
-  - jupyterlab
-  - tqdm
-  - albumentations
+  - scipy
   - pillow
-  - opencv
+  - tqdm
+  - simpleitk
+  - nibabel
+  - jupyterlab
+  - ipykernel
   - pip:
+      - albumentations==2.0.8
+      - opencv-python==4.11.0.86
       - ipywidgets
+      - imageio
+      - pyyaml
