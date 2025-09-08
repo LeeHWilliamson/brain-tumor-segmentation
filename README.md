@@ -72,7 +72,9 @@ To test or explore the segmentation pipeline:
         conda activate medcv-gpu
 
 > **Note:** Training requires a CUDA-enabled GPU. Inference and visualization can be run on CPU. You can easily forgoe training completely and simply look at the included metric charts and generated predictions if you don't have an Nvidia GPU.
+
 > **For Nvidia GPUs of series 50xx or newer**, as of 9/1/2025 do NOT use the default torch and torchvision install included in this repo, use the nightly builds instead
+
 >        -pip install torch==2.7.0.dev20250310+cu128 torchvision==0.22.0.dev20250310+cu128 --index-url https://download.pytorch.org/whl/nightly/cu128
 
 ---
