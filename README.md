@@ -1,5 +1,7 @@
 # Medical Image Segmentation – From Scratch
 
+<img width="1200" height="799" alt="image" src="https://github.com/user-attachments/assets/83cd0072-0082-417a-8021-e0368d19115e" />
+
 Welcome! This project was developed as a resource for:
 
 - **Medical professionals (and enthusiasts!)** interested in how AI models for medical imaging are trained and deployed.
@@ -58,16 +60,17 @@ This makes it easier to understand and adapt the code to your own segmentation p
 
 To test or explore the segmentation pipeline:
 1. Clone the repository.
+  
 2. Install dependencies (if not using Conda)
   In your command line...
         python -m venv venv
         source venv/bin/activate  (or venv\Scripts\activate on Windows)
         pip install -r requirements.txt
-4. If you want to run your own training loops with GPU acceleration, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) to ensure you install the proper version of torch and torchvision
-5. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
+3. If you want to run your own training loops with GPU acceleration, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) to ensure you install the proper version of torch and torchvision
+4. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
      a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
-6. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
-7. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
+5. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
+6. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
         conda create -n medcv-gpu python=3.10.18
         conda activate medcv-gpu
 
