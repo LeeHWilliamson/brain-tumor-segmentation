@@ -58,21 +58,22 @@ This makes it easier to understand and adapt the code to your own segmentation p
 
 To test or explore the segmentation pipeline:
 1. Clone the repository.
-2. Install dependencies
+2. Install dependencies (if not using Conda)
+  In your command line...
+        python -m venv venv
+        source venv/bin/activate  (or venv\Scripts\activate on Windows)
         pip install -r requirements.txt
-3. If you want to run your own training loops, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) or run the following in your command line.
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-4. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
+4. If you want to run your own training loops with GPU acceleration, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) to ensure you install the proper version of torch and torchvision
+5. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
      a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
-5. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
-6. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
+6. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
+7. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
         conda create -n medcv-gpu python=3.10.18
         conda activate medcv-gpu
 
-> **Note:** Training requires a CUDA-enabled GPU. Inference and visualization can be run on CPU. You can easily forgoe training completely and simply look at the metric charts and generated predictions if you don't have an Nvidia GPU.
-> **For Nvidia GPUs of series 50xx or newer**, do NOT use the default torch and torchvision install included in this repo, use these instead
->         - torch==2.7.0.dev20250310+cu128
->         - torchvision==0.22.0.dev20250310+cu128
+> **Note:** Training requires a CUDA-enabled GPU. Inference and visualization can be run on CPU. You can easily forgoe training completely and simply look at the included metric charts and generated predictions if you don't have an Nvidia GPU.
+> **For Nvidia GPUs of series 50xx or newer**, as of 9/1/2025 do NOT use the default torch and torchvision install included in this repo, use the nightly builds instead
+        -pip install torch==2.7.0.dev20250310+cu128 torchvision==0.22.0.dev20250310+cu128 --index-url https://download.pytorch.org/whl/nightly/cu128
 
 ---
 
