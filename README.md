@@ -5,7 +5,7 @@
 Welcome! This project was developed as a resource for:
 
 - **Medical professionals (and enthusiasts!)** interested in how AI models for medical imaging are trained and deployed.
-- **Computer science students** looking to build custom segmentation pipelines without relying on high-level libraries like MONAI.
+- **Computer science students** looking to build custom segmentation pipelines without relying on high-level, domain specific libraries.
 
 Whether you're interested in a high-level explanation about how these models work, or the inner-workings of how to create them. You are in the right place. 
 
@@ -13,9 +13,9 @@ Whether you're interested in a high-level explanation about how these models wor
 
 ## This Project
 
-This repository walks through a complete medical image segmentation pipeline using **PyTorch only**—no MONAI or other heavy abstractions.
+This model and data processing pipeline are designed using **PyTorch only**, no domain specific abstractions at all. While the tutorial and helper functions focus on medical image segmentation. **The framework for the model and data processing pipeline are applicable to other 3D segmentation tasks as well.** Modifying this project for other 3D imaging tasks will at least require importing a library that can convert 3D images in the problem domain to numpy arrays or Torch tensors. Beyond that, advice on how to repurpose parts of this project for other 3D imaging tasks will be included in inline comments in each file. 
 
-It includes:
+This project includes:
 - Manual data loading and preprocessing
 - Patch-based training setup
 - Custom 3D UNet-style architecture
@@ -29,17 +29,16 @@ If you're a **CS student or learner**, continue reading to explore the internal 
 
 ---
 
-## Why not use Monai?
+## Why not use doman specific abstractions?
 
-Many open-source medical imaging projects use high-level frameworks that obscure how things work under the hood. Furthermore, many of these libraries don't always keep pace with the latest pyTorch release or developments in consumer-grade
-hardware. This project decouples from tools that may impede learning for new students by...
+Many open-source imaging projects use high-level frameworks (e.g. medical image segementation like is being done here often relies on the MONAI software library) that obscure how things work under the hood. Furthermore, many of these libraries don't always keep pace with the latest pyTorch release or developments in consumer-grade hardware. This project decouples from tools that may impede learning for new students by...
 
 - Implementing each step manually in PyTorch
 - Providing function-level comments and beginner-friendly explanations
 
 And it maximizes accessibility for all by carrying out the above using **PyTorch alone**
 
-This makes it easier to understand and adapt the code to your own segmentation problems.
+This makes it easier to understand and adapt the code to **your own segmentation tasks.**
 
 ---
 
@@ -58,7 +57,7 @@ This makes it easier to understand and adapt the code to your own segmentation p
 
 ## Getting Started
 
-To test or explore the segmentation pipeline:
+To explore the segmentation pipeline and follow along with the medical imaging tutorial:
 1. Clone the repository.
   
 2. Install dependencies (if not using Conda)
