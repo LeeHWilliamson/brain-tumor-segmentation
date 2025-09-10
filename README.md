@@ -1,9 +1,11 @@
 # Medical Image Segmentation – From Scratch
 
+<img width="1200" height="799" alt="image" src="https://github.com/user-attachments/assets/83cd0072-0082-417a-8021-e0368d19115e" />
+
 Welcome! This project was developed as a resource for:
 
 - **Medical professionals (and enthusiasts!)** interested in how AI models for medical imaging are trained and deployed.
-- **Computer science students** looking to build custom segmentation pipelines without relying on high-level libraries like MONAI.
+- **Computer science students** looking to build custom segmentation pipelines without relying on high-level, domain specific libraries.
 
 Whether you're interested in a high-level explanation about how these models work, or the inner-workings of how to create them. You are in the right place. 
 
@@ -11,9 +13,9 @@ Whether you're interested in a high-level explanation about how these models wor
 
 ## This Project
 
-This repository walks through a complete medical image segmentation pipeline using **PyTorch only**—no MONAI or other heavy abstractions.
+This model and data processing pipeline are designed using **PyTorch only**, no domain specific abstractions at all. While the tutorial and helper functions focus on medical image segmentation. **The framework for the model and data processing pipeline are applicable to other 3D segmentation tasks as well.** Modifying this project for other 3D imaging tasks will at least require importing a library that can convert 3D images in the problem domain to numpy arrays or Torch tensors. Beyond that, advice on how to repurpose parts of this project for other 3D imaging tasks will be included in inline comments in each file. 
 
-It includes:
+This project includes:
 - Manual data loading and preprocessing
 - Patch-based training setup
 - Custom 3D UNet-style architecture
@@ -27,17 +29,16 @@ If you're a **CS student or learner**, continue reading to explore the internal 
 
 ---
 
-## Why not use Monai?
+## Why not use doman specific abstractions?
 
-Many open-source medical imaging projects use high-level frameworks that obscure how things work under the hood. Furthermore, many of these libraries don't always keep pace with the latest pyTorch release or developments in consumer-grade
-hardware. This project decouples from tools that may impede learning for new students by...
+Many open-source imaging projects use high-level frameworks (e.g. medical image segementation like is being done here often relies on the MONAI software library) that obscure how things work under the hood. Furthermore, many of these libraries don't always keep pace with the latest pyTorch release or developments in consumer-grade hardware. This project decouples from tools that may impede learning for new students by...
 
 - Implementing each step manually in PyTorch
 - Providing function-level comments and beginner-friendly explanations
 
 And it maximizes accessibility for all by carrying out the above using **PyTorch alone**
 
-This makes it easier to understand and adapt the code to your own segmentation problems.
+This makes it easier to understand and adapt the code to **your own segmentation tasks.**
 
 ---
 
@@ -56,18 +57,19 @@ This makes it easier to understand and adapt the code to your own segmentation p
 
 ## Getting Started
 
-To test or explore the segmentation pipeline:
+To explore the segmentation pipeline and follow along with the medical imaging tutorial:
 1. Clone the repository.
+  
 2. Install dependencies (if not using Conda)
   In your command line...
         python -m venv venv
         source venv/bin/activate  (or venv\Scripts\activate on Windows)
         pip install -r requirements.txt
-4. If you want to run your own training loops with GPU acceleration, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) to ensure you install the proper version of torch and torchvision
-5. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
+3. If you want to run your own training loops with GPU acceleration, visit the PyTorch installation page (https://pytorch.org/get-started/locally/) to ensure you install the proper version of torch and torchvision
+4. Download your dataset (e.g., BraTS 2020  https://www.kaggle.com/datasets/abulhasan4124/brats-2020) and place it in the appropriate directory.
      a. Raw data should be in Nifti format, this notebook assumes all data (training and validation) will be in single directory
-6. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
-7. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
+5. Open `medical_segmentation.ipynb` and follow the steps to run the pipeline.
+6. If you prefer to recreate the **exact GPU configuration** used in this project, you will need to intsall a conda distribution on your machine and run the following from your command line
         conda create -n medcv-gpu python=3.10.18
         conda activate medcv-gpu
 
