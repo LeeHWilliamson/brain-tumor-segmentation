@@ -11,3 +11,6 @@ simpleitk>=2.2
 pillow>=9.0
 albumentations>=1.3
 jupyterlab>=3.0
+onnx>=1.10
+onnxscript>=0.1.0
+onnxruntime>=1.20
